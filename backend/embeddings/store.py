@@ -9,15 +9,18 @@ from typing import List, Dict, Any, Tuple, Optional
 from pathlib import Path
 from dataclasses import asdict
 import pickle
+import threading
+import contextlib
 
 from embeddings.chunker import TextChunk
+from utils.resource_manager import get_database_pool, ResourceManager
 
 logger = logging.getLogger(__name__)
 
 class VectorStore:
     """
     Vector database for storing and searching document embeddings
-    Combines SQLite for metadata and simple in-memory/file storage for vectors
+    Uses connection pooling and proper resource management
     """
     
     def __init__(self, db_path: str = "data/corpus.db", vector_path: str = "data/vectors.pkl"):
@@ -35,15 +38,21 @@ class VectorStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.vector_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Initialize storage
+        # Get database pool for connection management
+        self.db_pool = get_database_pool(str(self.db_path), max_connections=5)
+        
+        # Thread-safe vector storage
         self.vectors = {}  # chunk_id -> np.ndarray
+        self._vector_lock = threading.RLock()
+        
+        # Initialize storage
         self._init_database()
         self._load_vectors()
     
     def _init_database(self):
         """Initialize the SQLite database schema"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self.db_pool.get_connection() as conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS chunks (
                         chunk_id TEXT PRIMARY KEY,
@@ -78,31 +87,41 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Database initialization failed: {str(e)}")
             raise
-    
-    def _load_vectors(self):
-        """Load vectors from pickle file"""
-        try:
-            if self.vector_path.exists():
-                with open(self.vector_path, 'rb') as f:
-                    self.vectors = pickle.load(f)
-                logger.info(f"Loaded {len(self.vectors)} vectors from storage")
-            else:
+      def _load_vectors(self):
+        """Load vectors from pickle file with proper error handling"""
+        with self._vector_lock:
+            try:
+                if self.vector_path.exists():
+                    with open(self.vector_path, 'rb') as f:
+                        self.vectors = pickle.load(f)
+                    logger.info(f"Loaded {len(self.vectors)} vectors from storage")
+                else:
+                    self.vectors = {}
+                    logger.info("No existing vectors found, starting fresh")
+                    
+            except Exception as e:
+                logger.error(f"Failed to load vectors: {str(e)}")
                 self.vectors = {}
-                logger.info("No existing vectors found, starting fresh")
-                
-        except Exception as e:
-            logger.error(f"Failed to load vectors: {str(e)}")
-            self.vectors = {}
     
     def _save_vectors(self):
-        """Save vectors to pickle file"""
-        try:
-            with open(self.vector_path, 'wb') as f:
-                pickle.dump(self.vectors, f)
-            logger.debug("Vectors saved to storage")
-            
-        except Exception as e:
-            logger.error(f"Failed to save vectors: {str(e)}")
+        """Save vectors to pickle file with atomic writes"""
+        with self._vector_lock:
+            try:
+                # Write to temporary file first for atomic operation
+                temp_path = self.vector_path.with_suffix('.tmp')
+                with open(temp_path, 'wb') as f:
+                    pickle.dump(self.vectors, f)
+                
+                # Atomic rename
+                temp_path.replace(self.vector_path)
+                logger.debug("Vectors saved to storage")
+                
+            except Exception as e:
+                logger.error(f"Failed to save vectors: {str(e)}")
+                # Clean up temp file if it exists
+                temp_path = self.vector_path.with_suffix('.tmp')
+                if temp_path.exists():
+                    temp_path.unlink()
     
     def add_chunks(self, chunks: List[TextChunk], embeddings: List[np.ndarray]):
         """
@@ -116,7 +135,7 @@ class VectorStore:
             raise ValueError("Number of chunks must match number of embeddings")
         
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self.db_pool.get_connection() as conn:
                 # Add chunks to database
                 chunk_data = []
                 for chunk in chunks:

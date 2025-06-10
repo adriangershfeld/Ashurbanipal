@@ -3,6 +3,7 @@ Launch LibreWolf browser for research sessions
 """
 import sys
 import logging
+import utils
 from pathlib import Path
 
 # Add backend to path

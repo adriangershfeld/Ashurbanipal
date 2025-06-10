@@ -5,7 +5,7 @@ export interface SearchResult {
   source_file: string;
   chunk_id: string;
   similarity_score: number;
-  metadata: Record<string, any>;
+  metadata: Record<string, string | number | boolean>;
 }
 
 export interface QueryRequest {

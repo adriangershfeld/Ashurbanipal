@@ -4,7 +4,6 @@ import {
   MessageSquare,
   Files,
   Database,
-  Settings,
   Brain,
   Folder,
   Globe
@@ -14,8 +13,9 @@ import SearchBar from './components/SearchBar';
 import ResultList from './components/ResultList';
 import ChatUI from './components/ChatUI';
 import FileViewer from './components/FileViewer';
+import ErrorBoundary from './components/ErrorBoundary';
 
-import { queryApi, ingestApi, filesApi } from './api';
+import { queryApi, ingestApi } from './api';
 import type {
   SearchResult,
   ChatMessage,
@@ -31,8 +31,7 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [corpusStatus, setCorpusStatus] = useState<CorpusStatus | null>(null);
-  
-  // Loading states
+    // Loading states
   const [isSearching, setIsSearching] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
@@ -107,18 +106,14 @@ const App: React.FC = () => {
       setIsChatting(false);
     }
   };
-
   const handleResultClick = (result: SearchResult) => {
     // TODO: Implement result click handling
     console.log('Result clicked:', result);
   };
 
-  const handleFileSelect = (file: FileInfo) => {
-    setSelectedFile(file);
-  };
-
   return (
-    <div className="app">
+    <ErrorBoundary>
+      <div className="app">
       {/* Header */}
       <header className="app-header">
         <div className="header-content">
@@ -126,14 +121,23 @@ const App: React.FC = () => {
             <Brain size={24} />
             <h1>Ashurbanipal</h1>
           </div>
-          
-          <div className="header-info">
-            {corpusStatus && (
+            <div className="header-info">
+            {isLoadingStatus ? (
+              <div className="corpus-stats">
+                <Database size={16} />
+                <span>Loading...</span>
+              </div>
+            ) : corpusStatus ? (
               <div className="corpus-stats">
                 <Database size={16} />
                 <span>{corpusStatus.total_documents} docs</span>
                 <span>•</span>
                 <span>{corpusStatus.total_chunks} chunks</span>
+              </div>
+            ) : (
+              <div className="corpus-stats">
+                <Database size={16} />
+                <span>No corpus data</span>
               </div>
             )}
           </div>
@@ -172,11 +176,17 @@ const App: React.FC = () => {
             <div className="search-header">
               <SearchBar onSearch={handleSearch} loading={isSearching} />
             </div>
-            <div className="search-results">
-              <ResultList
+            <div className="search-results">              <ResultList
                 results={searchResults}
                 loading={isSearching}
-                onResultClick={handleResultClick}
+                onResultClick={(result) => {
+                  handleResultClick(result);
+                  // If the result has file info, we could open it
+                  if (result.source_file) {
+                    // For now, just console log, but this could trigger file opening
+                    console.log('Opening file:', result.source_file);
+                  }
+                }}
               />
             </div>
           </div>
@@ -426,10 +436,10 @@ const App: React.FC = () => {
 
           .quick-actions {
             display: none;
-          }
-        }
+          }        }
       `}</style>
     </div>
+    </ErrorBoundary>
   );
 };
 
