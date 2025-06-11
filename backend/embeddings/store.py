@@ -264,6 +264,52 @@ class VectorStore:
             logger.error(f"Failed to get chunks for file {filepath}: {str(e)}")
             return []
     
+    def file_exists(self, filepath: str) -> bool:
+        """Check if a file already exists in the vector store"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("SELECT 1 FROM files WHERE filepath = ?", (filepath,))
+                return cursor.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Error checking file existence: {str(e)}")
+            return False
+    
+    def get_chunk_count(self) -> int:
+        """Get total number of chunks in the store"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("SELECT COUNT(*) FROM chunks")
+                return cursor.fetchone()[0]
+        except Exception as e:
+            logger.error(f"Error getting chunk count: {str(e)}")
+            return 0
+    
+    def get_file_list(self) -> List[str]:
+        """Get list of all files in the store"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("SELECT filepath FROM files")
+                return [row[0] for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting file list: {str(e)}")
+            return []
+    
+    def get_chunk_metadata(self, chunk_id: str) -> Optional[Dict[str, Any]]:
+        """Get metadata for a specific chunk"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("SELECT * FROM chunks WHERE chunk_id = ?", (chunk_id,))
+                row = cursor.fetchone()
+                if row:
+                    result = dict(row)
+                    result['metadata'] = json.loads(result['metadata']) if result['metadata'] else {}
+                    return result
+                return None
+        except Exception as e:
+            logger.error(f"Error getting chunk metadata: {str(e)}")
+            return None
+    
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about the vector store"""
         try:
@@ -330,3 +376,97 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Similarity calculation failed: {str(e)}")
             return 0.0
+    
+    def get_files_list(self, offset: int = 0, limit: int = 50) -> Dict[str, Any]:
+        """Get paginated list of files with detailed information"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                # Get total count first
+                cursor = conn.execute("SELECT COUNT(*) FROM files")
+                total_files = cursor.fetchone()[0]
+                  # Get paginated files with details
+                cursor = conn.execute("""
+                    SELECT f.filepath, f.filename, f.file_size, f.last_modified, f.ingested_at,
+                           COUNT(c.chunk_id) as chunks_count
+                    FROM files f
+                    LEFT JOIN chunks c ON f.filepath = c.source_file
+                    GROUP BY f.filepath, f.filename, f.file_size, f.last_modified, f.ingested_at                    ORDER BY f.ingested_at DESC
+                    LIMIT ? OFFSET ?
+                """, (limit, offset))
+                
+                files = []
+                for row in cursor.fetchall():
+                    filepath, filename, file_size, last_modified, ingested_at, chunks_count = row
+                    file_ext = Path(filename).suffix.lower() if filename else ''
+                    files.append({
+                        'filename': filename,
+                        'filepath': filepath,
+                        'size': file_size or 0,
+                        'modified_date': last_modified or 'Unknown',
+                        'file_type': file_ext.lstrip('.') if file_ext else 'unknown',
+                        'chunks_count': chunks_count or 0
+                    })
+                
+                return {
+                    'files': files,
+                    'total_files': total_files,
+                    'offset': offset,
+                    'limit': limit
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting files list: {str(e)}")
+            return {'files': [], 'total_files': 0, 'offset': offset, 'limit': limit}
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive statistics about the vector store"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                # Get chunk count
+                cursor = conn.execute("SELECT COUNT(*) FROM chunks")
+                chunk_count = cursor.fetchone()[0]
+                
+                # Get file count
+                cursor = conn.execute("SELECT COUNT(*) FROM files")
+                file_count = cursor.fetchone()[0]
+                  # Get total size
+                cursor = conn.execute("SELECT SUM(file_size) FROM files WHERE file_size IS NOT NULL")
+                total_size = cursor.fetchone()[0] or 0
+                total_size_mb = round(total_size / (1024 * 1024), 2)
+                
+                # Get file types
+                cursor = conn.execute("""
+                    SELECT 
+                        CASE 
+                            WHEN INSTR(filename, '.') > 0 
+                            THEN LOWER(SUBSTR(filename, INSTR(filename, '.')+1))
+                            ELSE 'unknown'
+                        END as extension,
+                        COUNT(*) as count
+                    FROM files 
+                    GROUP BY extension
+                """)
+                file_types = {row[0]: row[1] for row in cursor.fetchall()}
+                  # Get last update time
+                cursor = conn.execute("SELECT MAX(ingested_at) FROM files")
+                last_updated = cursor.fetchone()[0]
+                
+                return {
+                    "total_files": file_count,
+                    "total_chunks": chunk_count,
+                    "total_size_mb": total_size_mb,
+                    "file_types": file_types,
+                    "last_updated": last_updated,
+                    "vector_count": len(self.vectors)
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to get statistics: {str(e)}")
+            return {
+                "total_files": 0,
+                "total_chunks": 0,
+                "total_size_mb": 0.0,
+                "file_types": {},
+                "last_updated": None,
+                "vector_count": 0
+            }

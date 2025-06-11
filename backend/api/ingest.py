@@ -55,30 +55,115 @@ async def ingest_folder(request: IngestRequest):
             raise HTTPException(status_code=404, detail="Folder not found")
         if not path.is_dir():
             raise HTTPException(status_code=400, detail="Path is not a directory")
-            
-        # Validate file types
+              # Validate file types
         valid_extensions = [ext for ext in request.file_types if InputSanitizer.sanitize_filename(f"test{ext}")]
         if not valid_extensions:
             raise HTTPException(status_code=400, detail="No valid file types provided")
             
         logger.info(f"Starting folder ingestion: {folder_path}")
         logger.info(f"File types: {valid_extensions}, Recursive: {request.recursive}")
+          # Import required modules
+        from utils.file_loader import FileLoader
+        from utils.pdf_extractor import PDFExtractor
+        from embeddings.store import VectorStore
+        from embeddings.chunker import TextChunker
+        from embeddings.embedder import EmbeddingModel
         
-        # TODO: Implement actual folder ingestion
-        # 1. Scan folder for files
-        # 2. Extract text from each file
-        # 3. Chunk the text
-        # 4. Generate embeddings
-        # 5. Store in vector database
+        # Initialize components
+        file_loader = FileLoader(supported_extensions=valid_extensions)
+        pdf_extractor = PDFExtractor()
+        vector_store = VectorStore()
+        chunker = TextChunker()
+        embedder = EmbeddingModel()
         
-        processing_time = (time.time() - start_time) * 1000
+        files_processed = 0
+        chunks_created = 0
         
-        return IngestResponse(
-            status="completed",
-            files_processed=0,
-            chunks_created=0,
-            processing_time_ms=processing_time
-        )
+        try:
+            # 1. Scan folder for files
+            logger.info("Scanning folder for files...")
+            files = file_loader.scan_directory(folder_path, recursive=request.recursive)
+            logger.info(f"Found {len(files)} files to process")
+            
+            if not files:
+                return IngestResponse(
+                    status="completed",
+                    files_processed=0,
+                    chunks_created=0,
+                    processing_time_ms=(time.time() - start_time) * 1000
+                )
+              # 2. Process each file
+            for file_info in files:
+                try:
+                    filepath = file_info['filepath']
+                    filename = file_info['filename']
+                    logger.info(f"Processing file: {filename}")
+                    
+                    # Check if file already exists in vector store
+                    if vector_store.file_exists(filepath):
+                        logger.info(f"File already processed: {filename}")
+                        continue                    # 3. Extract text from file
+                    text_content = ""
+                    file_extension = filepath.lower().split('.')[-1]
+                    
+                    if file_extension in ['pdf']:
+                        # PDF extractor returns a dict, get the text field
+                        pdf_result = pdf_extractor.extract_text(filepath)
+                        if isinstance(pdf_result, dict):
+                            text_content = pdf_result.get('text', '')
+                        else:
+                            text_content = str(pdf_result)
+                    elif file_extension in ['txt', 'md', 'py']:
+                        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                            text_content = f.read()
+                    
+                    if not text_content or len(text_content.strip()) < 50:
+                        logger.warning(f"No content extracted from {filename}")
+                        continue
+                    
+                    # 4. Chunk the text
+                    chunks = chunker.chunk_text(text_content, filepath, {"file_type": file_extension})
+                    logger.info(f"Created {len(chunks)} chunks from {filename}")
+                    
+                    if not chunks:
+                        continue
+                    
+                    # 5. Generate embeddings
+                    chunk_texts = [chunk.content for chunk in chunks]
+                    embeddings = embedder.batch_embed(chunk_texts)
+                    
+                    # 6. Store in vector database
+                    vector_store.add_chunks(chunks, embeddings)
+                    
+                    files_processed += 1
+                    chunks_created += len(chunks)
+                    
+                    logger.info(f"Successfully processed {filename}: {len(chunks)} chunks")
+                    
+                except Exception as file_error:
+                    logger.error(f"Error processing file {file_info.get('name', 'unknown')}: {str(file_error)}")
+                    continue
+            
+            processing_time = (time.time() - start_time) * 1000
+            logger.info(f"Folder ingestion completed: {files_processed} files, {chunks_created} chunks in {processing_time:.2f}ms")
+            
+            return IngestResponse(
+                status="completed",
+                files_processed=files_processed,
+                chunks_created=chunks_created,
+                processing_time_ms=processing_time
+            )
+            
+        except Exception as processing_error:
+            logger.error(f"Error during file processing: {str(processing_error)}")
+            processing_time = (time.time() - start_time) * 1000
+            
+            return IngestResponse(
+                status="partial" if files_processed > 0 else "failed",
+                files_processed=files_processed,
+                chunks_created=chunks_created,
+                processing_time_ms=processing_time
+            )
     
     except HTTPException:
         raise

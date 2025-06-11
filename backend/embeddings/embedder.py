@@ -32,14 +32,20 @@ class EmbeddingModel:
     def _load_model(self):
         """Load the embedding model"""
         try:
-            # TODO: Implement model loading
-            # from sentence_transformers import SentenceTransformer
-            # self.model = SentenceTransformer(self.model_name, device=self.device)
-            # self.embedding_dim = self.model.get_sentence_embedding_dimension()
+            # Try to import sentence-transformers
+            from sentence_transformers import SentenceTransformer
             
-            logger.info(f"Embedding model '{self.model_name}' loaded successfully")
-            self.embedding_dim = 384  # Placeholder dimension
+            self.model = SentenceTransformer(self.model_name, device=self.device)
+            # Get dimension and assign to instance variable
+            dimension = self.model.get_sentence_embedding_dimension()
+            self.embedding_dim = int(dimension) if dimension is not None else 384
             
+            logger.info(f"Embedding model '{self.model_name}' loaded successfully with dimension {self.embedding_dim}")
+            
+        except ImportError:
+            logger.warning("sentence-transformers not installed. Using dummy embeddings.")
+            self.model = None
+            self.embedding_dim = 384  # Default dimension for dummy embeddings
         except Exception as e:
             logger.error(f"Failed to load embedding model: {str(e)}")
             # Use dummy model for testing
@@ -65,12 +71,16 @@ class EmbeddingModel:
                 logger.warning("Using dummy embeddings - model not loaded")
                 return [np.random.rand(self.embedding_dim) for _ in text]
             
-            # TODO: Implement actual embedding generation
-            # embeddings = self.model.encode(text, convert_to_numpy=True)
-            # return embeddings
+            # Generate actual embeddings
+            embeddings = self.model.encode(text, convert_to_numpy=True)
             
-            # Placeholder: return random embeddings
-            return [np.random.rand(self.embedding_dim) for _ in text]
+            # Ensure we return a list even for single input
+            if len(text) == 1 and embeddings.ndim == 1:
+                return [embeddings]
+            elif embeddings.ndim == 2:
+                return [embeddings[i] for i in range(embeddings.shape[0])]
+            else:
+                return [embeddings]
             
         except Exception as e:
             logger.error(f"Embedding generation failed: {str(e)}")

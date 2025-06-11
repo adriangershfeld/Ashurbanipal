@@ -1,6 +1,9 @@
 # Ashurbanipal - Local AI Research Assistant
 # Git ignore configuration
 
+# Project roadmap (keep local)
+local_ai_assistant_roadmap.md
+
 # Python
 __pycache__/
 *.py[cod]

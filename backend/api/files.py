@@ -36,14 +36,31 @@ async def list_files(limit: int = 50, offset: int = 0):
             raise HTTPException(status_code=400, detail="Limit must be between 1 and 100")
         if offset < 0:
             raise HTTPException(status_code=400, detail="Offset must be non-negative")
-            
+        
         logger.info(f"Listing files (limit: {limit}, offset: {offset})")
         
-        # TODO: Implement actual file listing from database
-        mock_files = []
+        # Import vector store
+        from embeddings.store import VectorStore
+        
+        # Initialize vector store
+        store = VectorStore()
+        files_data = store.get_files_list(offset=offset, limit=limit)
+        
+        # Convert to response format
+        files = []
+        for file_info in files_data.get('files', []):
+            files.append(FileInfo(
+                filename=file_info.get('filename', ''),
+                filepath=file_info.get('filepath', ''),
+                size=file_info.get('size', 0),
+                modified_date=file_info.get('modified_date', ''),
+                file_type=file_info.get('file_type', ''),
+                chunks_count=file_info.get('chunks_count', 0)
+            ))
+        
         return FilesResponse(
-            files=mock_files, 
-            total_files=0
+            files=files, 
+            total_files=files_data.get('total_files', 0)
         )
     
     except HTTPException:
@@ -202,16 +219,22 @@ async def get_corpus_stats():
     Get corpus statistics
     """
     try:
-        # TODO: Implement stats calculation from database
         logger.info("Getting corpus statistics")
         
+        # Import vector store
+        from embeddings.store import VectorStore
+        
+        # Initialize vector store
+        store = VectorStore()
+        stats = store.get_statistics()
+        
         return {
-            "total_files": 0,
-            "total_chunks": 0,
-            "total_size_mb": 0.0,
-            "file_types": {},
-            "last_updated": None,
-            "message": "Statistics calculation not fully implemented yet"
+            "total_files": stats.get("total_files", 0),
+            "total_chunks": stats.get("total_chunks", 0),
+            "total_size_mb": stats.get("total_size_mb", 0.0),
+            "file_types": stats.get("file_types", {}),
+            "last_updated": stats.get("last_updated"),
+            "status": "active"
         }
         
     except Exception as e:

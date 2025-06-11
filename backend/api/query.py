@@ -15,9 +15,15 @@ from utils.resource_manager import ResourceManager
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Initialize components (will be properly implemented later)
-vector_store = None  # VectorStore()
-embedding_model = None  # EmbeddingModel()
+# Initialize components with proper error handling
+try:
+    vector_store = VectorStore()
+    embedding_model = EmbeddingModel()
+    logger.info("Query API components initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize query API components: {e}")
+    vector_store = None
+    embedding_model = None
 
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=1000, description="Search query")
@@ -72,8 +78,7 @@ class ChatResponse(BaseModel):
 async def semantic_search(request: QueryRequest, http_request: Request):
     """Perform semantic search across the document corpus"""
     start_time = time.time()
-    
-    # Rate limiting
+      # Rate limiting
     client_ip = http_request.client.host if http_request.client else "unknown"
     if not check_rate_limit(client_ip, max_requests=50, window_seconds=3600):
         logger.warning(f"Rate limit exceeded for IP: {client_ip}")
@@ -82,27 +87,44 @@ async def semantic_search(request: QueryRequest, http_request: Request):
     try:
         logger.info(f"Search request from {client_ip}: '{request.query}' (limit: {request.limit}, threshold: {request.similarity_threshold})")
         
-        # TODO: Implement actual search logic
-        # For now, return mock data
-        mock_results = [
-            SearchResult(
-                content="This is a sample search result chunk.",
-                source_file="sample_document.pdf",
-                chunk_id="chunk_001",
-                similarity_score=0.85,
-                metadata={"page": 1, "section": "Introduction"}
-            )
-        ]
+        # Check if components are available
+        if not vector_store or not embedding_model:
+            logger.error("Vector store or embedding model not initialized")
+            raise HTTPException(status_code=503, detail="Search service not available")
+        
+        # Generate embedding for the query
+        query_embedding = embedding_model.embed_query(request.query)
+        
+        # Perform similarity search
+        search_results = vector_store.search(
+            query_embedding=query_embedding,
+            limit=request.limit,
+            similarity_threshold=request.similarity_threshold
+        )
+        
+        # Convert to response format
+        results = []
+        for chunk_id, similarity_score in search_results:
+            # Get chunk details from database
+            chunk_data = vector_store.get_chunk(chunk_id)
+            if chunk_data:
+                results.append(SearchResult(
+                    content=chunk_data.get('content', ''),
+                    source_file=chunk_data.get('source_file', ''),
+                    chunk_id=chunk_id,
+                    similarity_score=similarity_score,
+                    metadata=chunk_data.get('metadata', {})
+                ))
         
         query_time = (time.time() - start_time) * 1000  # Convert to milliseconds
         
         response = QueryResponse(
-            results=mock_results,
-            total_results=len(mock_results),
+            results=results,
+            total_results=len(results),
             query_time_ms=query_time
         )
         
-        logger.info(f"Search completed in {query_time:.2f}ms, returned {len(mock_results)} results")
+        logger.info(f"Search completed in {query_time:.2f}ms, returned {len(results)} results")
         return response
     
     except ValueError as e:
@@ -116,8 +138,7 @@ async def semantic_search(request: QueryRequest, http_request: Request):
 async def chat_with_rag(request: ChatRequest, http_request: Request):
     """Chat with RAG-enhanced responses"""
     start_time = time.time()
-    
-    # Rate limiting
+      # Rate limiting
     client_ip = http_request.client.host if http_request.client else "unknown"
     if not check_rate_limit(f"chat_{client_ip}", max_requests=30, window_seconds=3600):
         logger.warning(f"Chat rate limit exceeded for IP: {client_ip}")
@@ -126,17 +147,38 @@ async def chat_with_rag(request: ChatRequest, http_request: Request):
     try:
         logger.info(f"Chat request from {client_ip}: '{request.message[:50]}...' (use_rag: {request.use_rag})")
         
-        # TODO: Implement actual RAG chat logic
-        response_time = (time.time() - start_time) * 1000
+        # Import RAG pipeline
+        from llm.rag_pipeline import RAGPipeline
         
-        mock_response = ChatResponse(
-            response="This is a mock response. RAG implementation coming soon.",
-            sources=[],
-            response_time_ms=response_time
+        # Initialize RAG pipeline
+        rag = RAGPipeline()
+        
+        # Process query through RAG pipeline
+        rag_result = rag.query(
+            user_query=request.message,
+            chat_history=request.history,
+            use_context=request.use_rag
         )
         
-        logger.info(f"Chat completed in {response_time:.2f}ms")
-        return mock_response
+        # Convert sources to the expected format
+        response_sources = []
+        for source in rag_result.sources:
+            response_sources.append(SearchResult(
+                content=source.get('content', ''),
+                source_file=source.get('source_file', ''),
+                chunk_id=source.get('chunk_id', ''),
+                similarity_score=source.get('similarity_score', 0.0),
+                metadata=source.get('metadata', {})
+            ))
+        
+        response = ChatResponse(
+            response=rag_result.response,
+            sources=response_sources,
+            response_time_ms=rag_result.response_time_ms
+        )
+        
+        logger.info(f"Chat completed in {rag_result.response_time_ms:.2f}ms with {len(response_sources)} sources")
+        return response
     
     except ValueError as e:
         logger.warning(f"Invalid chat request from {client_ip}: {str(e)}")
