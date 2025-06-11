@@ -75,19 +75,18 @@ class VectorStore:
                         ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
-                
                 conn.execute("""
                     CREATE INDEX IF NOT EXISTS idx_chunks_source_file 
                     ON chunks(source_file)
                 """)
-                
                 conn.commit()
                 logger.info("Database initialized successfully")
                 
         except Exception as e:
             logger.error(f"Database initialization failed: {str(e)}")
             raise
-      def _load_vectors(self):
+    
+    def _load_vectors(self):
         """Load vectors from pickle file with proper error handling"""
         with self._vector_lock:
             try:

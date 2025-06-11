@@ -17,9 +17,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    
-    /* styled-jsx support */
-    "types": ["styled-jsx"],
+      /* styled-jsx support */
+    "types": ["styled-jsx", "node"],
 
     /* Path mapping */
     "baseUrl": ".",
