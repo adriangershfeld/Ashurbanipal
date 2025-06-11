@@ -24,7 +24,7 @@ class EmbeddingModel:
         self.model_name = model_name
         self.device = device
         self.model = None
-        self.embedding_dim = None
+        self.embedding_dim: int = 384  # Set default dimension
         
         # Initialize model (will be implemented when dependencies are added)
         self._load_model()

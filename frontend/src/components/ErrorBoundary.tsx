@@ -42,12 +42,11 @@ class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="error-boundary">
-          <div className="error-content">
-            <AlertTriangle size={48} className="error-icon" />
+          <div className="error-content">            <AlertTriangle size={48} className="error-icon" />
             <h2>Something went wrong</h2>
             <p>The application encountered an unexpected error.</p>
             
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+            {import.meta.env.DEV && this.state.error && (
               <details className="error-details">
                 <summary>Error Details (Development)</summary>
                 <pre className="error-stack">

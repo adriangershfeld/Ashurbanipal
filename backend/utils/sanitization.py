@@ -114,8 +114,7 @@ class InputSanitizer:
         
         # Remove leading/trailing dots and spaces
         filename = filename.strip('. ')
-        
-        # Ensure it's not empty and not too long
+          # Ensure it's not empty and not too long
         if not filename or filename in ['.', '..']:
             filename = "untitled"
         
@@ -124,6 +123,53 @@ class InputSanitizer:
             filename = name[:250] + ('.' + ext if ext else '')
         
         return filename
+    
+    @classmethod
+    def sanitize_path(cls, path: str) -> str:
+        """
+        Sanitize and validate a file path for safe operations
+        
+        Args:
+            path: Input file path
+            
+        Returns:
+            Sanitized path or empty string if invalid
+        """
+        if not path:
+            return ""
+        
+        # Remove URL encoding
+        path = unquote(path)
+        
+        # Normalize Unicode
+        path = unicodedata.normalize('NFKC', path)
+        
+        # Check for path traversal attempts
+        for pattern in cls.PATH_TRAVERSAL_PATTERNS:
+            if re.search(pattern, path, re.IGNORECASE):
+                logger.warning(f"Path traversal attempt detected: {path}")
+                return ""
+        
+        # Remove control characters but keep path separators
+        path = ''.join(char for char in path if ord(char) >= 32 or char in '\n\r\t')
+        
+        # Normalize path separators for current OS
+        import os
+        path = os.path.normpath(path)
+        
+        # Additional security: ensure path doesn't start with certain dangerous patterns
+        dangerous_starts = ['\\\\', '//', 'file://', 'http://', 'https://']
+        for start in dangerous_starts:
+            if path.lower().startswith(start):
+                logger.warning(f"Dangerous path prefix detected: {start}")
+                return ""
+        
+        # Limit path length (Windows has 260 char limit, Unix systems vary)
+        if len(path) > 4096:  # Conservative limit
+            logger.warning(f"Path too long: {len(path)} characters")
+            return ""
+        
+        return path.strip()
     
     @classmethod
     def sanitize_query(cls, query: str) -> str:

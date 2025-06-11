@@ -2,7 +2,7 @@
 Query API for semantic search and RAG functionality
 """
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 import logging
 import time
@@ -24,7 +24,8 @@ class QueryRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=50, description="Maximum number of results")
     similarity_threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="Minimum similarity score")
     
-    @validator('query')
+    @field_validator('query')
+    @classmethod
     def query_must_not_be_empty(cls, v):
         if not v or not v.strip():
             raise ValueError('Query cannot be empty or whitespace only')
@@ -48,10 +49,11 @@ class QueryResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000, description="Chat message")
-    history: List[dict] = Field(default_factory=list, max_items=100)
+    history: List[dict] = Field(default_factory=list, description="Chat history (max 100 items)")
     use_rag: bool = Field(default=True, description="Whether to use RAG for response")
     
-    @validator('message')
+    @field_validator('message')
+    @classmethod
     def message_must_not_be_empty(cls, v):
         if not v or not v.strip():
             raise ValueError('Message cannot be empty or whitespace only')
@@ -153,37 +155,6 @@ async def find_similar_chunks(chunk_id: str, limit: int = Query(5, ge=1, le=20))
     except Exception as e:
         logger.error(f"Similar chunks error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Similar chunks search failed: {str(e)}")
-    results: List[SearchResult]
-    total_results: int
-    query_time_ms: float
-
-@router.post("/query", response_model=QueryResponse)
-async def search_documents(request: QueryRequest):
-    """
-    Perform semantic search across the document corpus
-    """
-    try:
-        # TODO: Implement actual search functionality
-        logger.info(f"Searching for: {request.query}")
-        
-        # Placeholder response
-        return QueryResponse(
-            results=[
-                SearchResult(
-                    content=f"Sample result for query: {request.query}",
-                    source_file="sample_document.pdf",
-                    chunk_id="chunk_001",
-                    similarity_score=0.85,
-                    metadata={"page": 1, "section": "Introduction"}
-                )
-            ],
-            total_results=1,
-            query_time_ms=50.0
-        )
-        
-    except Exception as e:
-        logger.error(f"Search error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Search failed")
 
 @router.get("/query/history")
 async def get_query_history(limit: int = Query(20, ge=1, le=100)):
