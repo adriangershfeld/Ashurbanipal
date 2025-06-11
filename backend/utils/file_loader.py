@@ -7,6 +7,16 @@ from pathlib import Path
 from typing import List, Dict, Any, Generator
 import mimetypes
 from datetime import datetime
+import fnmatch
+
+# Import configuration
+try:
+    from config import SUPPORTED_EXTENSIONS, EXCLUDE_PATTERNS, EXCLUDE_DIRECTORIES
+except ImportError:
+    # Fallback if config not available
+    SUPPORTED_EXTENSIONS = ['.pdf', '.txt', '.md', '.docx', '.doc', '.rtf']
+    EXCLUDE_PATTERNS = ['*.py', '*.js', '*.ts', '*.json', '*.log', '__pycache__']
+    EXCLUDE_DIRECTORIES = ['__pycache__', 'node_modules', '.git', '.vscode']
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +25,7 @@ class FileLoader:
     Handles discovery and loading of files from the file system
     """
     
-    def __init__(self, supported_extensions: List[str] = None):
+    def __init__(self, supported_extensions: List[str] | None = None):
         """
         Initialize the file loader
         
@@ -23,10 +33,33 @@ class FileLoader:
             supported_extensions: List of file extensions to process (e.g., ['.pdf', '.txt'])
         """
         if supported_extensions is None:
-            supported_extensions = ['.pdf', '.txt', '.md', '.docx', '.doc', '.rtf']
+            supported_extensions = list(SUPPORTED_EXTENSIONS)
         
         self.supported_extensions = [ext.lower() for ext in supported_extensions]
+        self.exclude_patterns = list(EXCLUDE_PATTERNS)
+        self.exclude_directories = list(EXCLUDE_DIRECTORIES)
         logger.info(f"FileLoader initialized with extensions: {self.supported_extensions}")
+    
+    def _should_exclude_file(self, file_path: Path) -> bool:
+        """Check if a file should be excluded based on patterns"""
+        filename = file_path.name
+        
+        # Check against exclude patterns
+        for pattern in self.exclude_patterns:
+            if fnmatch.fnmatch(filename.lower(), pattern.lower()):
+                return True
+        
+        return False
+    
+    def _should_exclude_directory(self, dir_path: Path) -> bool:
+        """Check if a directory should be excluded"""
+        dirname = dir_path.name.lower()
+        
+        for exclude_dir in self.exclude_directories:
+            if exclude_dir.lower() in dirname:
+                return True
+        
+        return False
     
     def scan_directory(self, directory_path: str, recursive: bool = True) -> List[Dict[str, Any]]:
         """
@@ -40,7 +73,6 @@ class FileLoader:
             List of file information dictionaries
         """
         directory = Path(directory_path)
-        
         if not directory.exists():
             raise FileNotFoundError(f"Directory not found: {directory_path}")
         
@@ -56,7 +88,11 @@ class FileLoader:
                 pattern = "*"
             
             for file_path in directory.glob(pattern):
-                if file_path.is_file() and self._is_supported_file(file_path):
+                # Skip if any parent directory should be excluded
+                if any(self._should_exclude_directory(parent) for parent in file_path.parents):
+                    continue
+                    
+                if file_path.is_file() and self._is_supported_file(file_path) and not self._should_exclude_file(file_path):
                     file_info = self._get_file_info(file_path)
                     files.append(file_info)
             

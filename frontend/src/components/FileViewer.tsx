@@ -163,12 +163,14 @@ const FileViewer: React.FC<FileViewerProps> = ({ file, content, onClose }) => {
 // File Upload Modal Component
 interface FileUploadProps {
   onUpload: (files: FileList) => void;
+  onFolderIngest: (folderPath: string) => void;
   uploading: boolean;
   onClose: () => void;
 }
 
-export const FileUpload: React.FC<FileUploadProps> = ({ onUpload, uploading, onClose }) => {
-  const [dragActive, setDragActive] = useState(false);
+export const FileUpload: React.FC<FileUploadProps> = ({ onUpload, onFolderIngest, uploading, onClose }) => {
+  const [dragActive, setDragActive] = useState(false);  const [uploadMode, setUploadMode] = useState<'files' | 'folder'>('files');
+  const [folderPath, setFolderPath] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrag = (e: React.DragEvent) => {
@@ -189,49 +191,94 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUpload, uploading, onC
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       onUpload(e.dataTransfer.files);
     }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  };  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       onUpload(e.target.files);
     }
   };
 
+  const handleFolderPathSubmit = () => {
+    if (folderPath.trim()) {
+      onFolderIngest(folderPath.trim());
+    }
+  };
+
   return (
     <div className="file-upload-overlay">
-      <div className="file-upload-modal">
-        <div className="upload-header">
-          <h3>Upload Files</h3>
+      <div className="file-upload-modal">        <div className="upload-header">
+          <h3>Add Documents to Corpus</h3>
           <button className="close-button" onClick={onClose} disabled={uploading}>
             <X size={20} />
           </button>
         </div>
 
         <div className="upload-content">
-          <div
-            className={`upload-area ${dragActive ? 'active' : ''} ${uploading ? 'uploading' : ''}`}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload size={48} />
-            <h4>
-              {uploading ? 'Uploading...' : 'Drop files here or click to browse'}
-            </h4>
-            <p>Supports PDF, DOCX, TXT, and MD files</p>
-            
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept=".pdf,.docx,.txt,.md"
-              onChange={handleFileSelect}
-              style={{ display: 'none' }}
-              disabled={uploading}
-            />
+          {/* Upload Mode Tabs */}
+          <div className="upload-mode-tabs">
+            <button 
+              className={`mode-tab ${uploadMode === 'files' ? 'active' : ''}`}
+              onClick={() => setUploadMode('files')}
+            >
+              Upload Files
+            </button>
+            <button 
+              className={`mode-tab ${uploadMode === 'folder' ? 'active' : ''}`}
+              onClick={() => setUploadMode('folder')}
+            >
+              Select Folder
+            </button>
           </div>
+
+          {uploadMode === 'files' ? (
+            <div
+              className={`upload-area ${dragActive ? 'active' : ''} ${uploading ? 'uploading' : ''}`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload size={48} />
+              <h4>
+                {uploading ? 'Uploading...' : 'Drop files here or click to browse'}
+              </h4>
+              <p>Supports PDF, DOCX, TXT, and MD files</p>
+              
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.docx,.txt,.md"
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+                disabled={uploading}
+              />
+            </div>
+          ) : (
+            <div className="folder-upload-area">
+              <div className="folder-path-input">
+                <label htmlFor="folderPath">Folder Path:</label>
+                <input
+                  type="text"
+                  id="folderPath"
+                  value={folderPath}
+                  onChange={(e) => setFolderPath(e.target.value)}
+                  placeholder="C:\Users\Your\Documents\Folder"
+                  disabled={uploading}
+                />
+                <button 
+                  className="ingest-button"
+                  onClick={handleFolderPathSubmit}
+                  disabled={uploading || !folderPath.trim()}
+                >                  {uploading ? 'Processing...' : 'Ingest Folder'}
+                </button>
+              </div>
+              <div className="folder-info">
+                <p><strong>Note:</strong> This will scan the specified folder for documents and add them to your corpus.</p>
+                <p>Supported formats: PDF, DOCX, TXT, MD files</p>                <p>Python files and other source code will be automatically excluded.</p>
+              </div>
+            </div>
+          )}
         </div>
 
         <style jsx>{`
@@ -290,10 +337,104 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUpload, uploading, onC
           .close-button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+          }          .upload-content {
+            padding: 20px;
           }
 
-          .upload-content {
+          .upload-mode-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #334155;
+          }
+
+          .mode-tab {
+            flex: 1;
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s ease;
+          }
+
+          .mode-tab:hover {
+            color: #cbd5e1;
+          }
+
+          .mode-tab.active {
+            color: #4f46e5;
+            border-bottom-color: #4f46e5;
+          }
+
+          .folder-upload-area {
             padding: 20px;
+          }
+
+          .folder-path-input {
+            margin-bottom: 20px;
+          }
+
+          .folder-path-input label {
+            display: block;
+            color: #f1f5f9;
+            font-weight: 500;
+            margin-bottom: 8px;
+          }
+
+          .folder-path-input input {
+            width: 100%;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: #e2e8f0;
+            font-size: 14px;
+            margin-bottom: 12px;
+          }
+
+          .folder-path-input input:focus {
+            outline: none;
+            border-color: #4f46e5;
+          }
+
+          .ingest-button {
+            background: #4f46e5;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s ease;
+          }
+
+          .ingest-button:hover:not(:disabled) {
+            background: #4338ca;
+          }
+
+          .ingest-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+
+          .folder-info {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 16px;
+            color: #94a3b8;
+            font-size: 14px;
+            line-height: 1.5;
+          }
+
+          .folder-info p {
+            margin: 0 0 8px 0;
+          }
+
+          .folder-info p:last-child {
+            margin-bottom: 0;
           }
 
           .upload-area {

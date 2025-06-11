@@ -70,7 +70,6 @@ const App: React.FC = () => {
       console.error('Failed to load files:', error);
     }
   };
-
   const handleFileUpload = async (fileList: FileList) => {
     try {
       setUploadingFiles(true);
@@ -86,6 +85,29 @@ const App: React.FC = () => {
       setShowFileUpload(false);
     } catch (error) {
       console.error('File upload failed:', error);
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
+  const handleFolderIngest = async (folderPath: string) => {
+    try {
+      setUploadingFiles(true);
+      
+      const result = await ingestApi.ingestFolder({
+        folder_path: folderPath,
+        file_types: ['.pdf', '.txt', '.md', '.docx'],
+        recursive: true
+      });
+      
+      console.log(`Folder ingestion completed: ${result.files_processed} files processed`);
+      
+      // Refresh files list and corpus status
+      await loadFiles();
+      await loadCorpusStatus();
+      setShowFileUpload(false);
+    } catch (error) {
+      console.error('Folder ingestion failed:', error);
     } finally {
       setUploadingFiles(false);
     }
@@ -390,12 +412,11 @@ const App: React.FC = () => {
             <BrowserAutomation onSessionUpdate={() => {}} />
           </div>
         )}
-      </main>
-
-      {/* File Upload Modal */}
+      </main>      {/* File Upload Modal */}
       {showFileUpload && (
         <FileUpload
           onUpload={handleFileUpload}
+          onFolderIngest={handleFolderIngest}
           uploading={uploadingFiles}
           onClose={() => setShowFileUpload(false)}
         />

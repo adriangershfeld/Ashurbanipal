@@ -2,6 +2,21 @@
 
 A privacy-focused, local-first AI research assistant that helps you search, analyze, and chat with your document corpus using semantic search and RAG (Retrieval-Augmented Generation).
 
+## 🚀 Recent Updates (June 2025)
+
+### ✅ **Critical Bug Fixes & Stability Improvements**
+- **🔧 Fixed Critical Indentation Error**: Resolved syntax error in streaming chat function that prevented application startup
+- **🛠️ Enhanced Error Handling**: Comprehensive error handling for streaming responses with proper resource cleanup
+- **⚡ Improved Performance**: Better memory management with response length limits and source count restrictions
+- **🔒 Security Enhancements**: Enhanced input validation and sanitization for all endpoints
+- **📊 Resource Management**: Added vector store size monitoring and automatic resource cleanup
+
+### ✅ **API Improvements**
+- **💬 Robust Streaming Chat**: Enhanced Server-Sent Events implementation with better error recovery
+- **🔍 Enhanced Search Validation**: Improved chunk ID validation and similarity search endpoints
+- **📝 Better Logging**: More detailed performance metrics and debugging information
+- **🛡️ Input Validation**: Individual message length limits and comprehensive data validation
+
 ## 🚀 Features
 
 ### ✅ **Production Ready & Fully Implemented**
@@ -43,7 +58,67 @@ A privacy-focused, local-first AI research assistant that helps you search, anal
 
 ## 🛠️ Quick Start
 
-### **Option 1: Development Mode**
+### **🚀 Option 1: Automated Launcher (Recommended)**
+
+The new comprehensive launcher handles all components automatically with intelligent process management, health monitoring, and graceful shutdown.
+
+#### **Windows PowerShell/CMD**
+
+```powershell
+# Simple start - all components
+.\launch.ps1
+
+# With search query
+.\launch.ps1 -Search "AI research assistant"
+
+# Install dependencies first
+.\launch.ps1 -InstallDeps
+
+# Check status
+.\launch.ps1 -Status
+
+# Stop all components
+.\launch.ps1 -Stop
+```
+
+#### **Python Direct**
+
+```powershell
+# Full application
+python launcher.py
+
+# Backend only (API development)
+python launcher.py --no-frontend --no-browser
+
+# Frontend only (UI development)
+python launcher.py --no-backend --no-browser
+
+# With search query
+python launcher.py --search "AI research"
+
+# Install dependencies
+python launcher.py --install-deps
+
+# Check status
+python launcher.py --status
+
+# Stop all components
+python launcher.py --stop
+```
+
+#### **VS Code Integration**
+
+- **Ctrl+Shift+P** → "Tasks: Run Task" → "Start Ashurbanipal (Full)"
+- **F5** → "Debug Ashurbanipal Launcher"
+- Available tasks:
+  - Start Ashurbanipal (Full)
+  - Start Ashurbanipal (Backend Only)
+  - Start Ashurbanipal (Frontend Only)
+  - Install Dependencies
+  - Check Status
+  - Stop Ashurbanipal
+
+### **🔧 Option 2: Manual Development Mode**
 
 ```powershell
 # Clone and navigate to project
@@ -131,6 +206,26 @@ frontend/
 - **📝 Security Headers**: XSS protection, clickjacking prevention
 - **🚨 Threat Detection**: Automatic suspicious activity blocking
 - **✅ Input Validation**: Pydantic models with comprehensive field validation
+
+## 📋 Changelog
+
+### v2.1.0 - June 11, 2025
+- **🔧 CRITICAL FIX**: Fixed indentation syntax error in streaming chat endpoint
+- **⚡ PERFORMANCE**: Added memory management with response length limits (10,000 chars)
+- **🛡️ SECURITY**: Enhanced input validation with individual message length limits (5,000 chars)
+- **📊 MONITORING**: Added vector store size monitoring and warnings
+- **🔄 RELIABILITY**: Improved error handling in streaming responses with proper cleanup
+- **🎯 API**: Enhanced chunk ID validation and similarity search endpoints
+- **📝 LOGGING**: Better performance metrics and debugging information
+- **🧹 CLEANUP**: Removed redundant placeholder RAG endpoint
+
+### v2.0.0 - December 2024
+- **🎨 UI**: Complete frontend redesign with streaming chat and enhanced search
+- **🚀 PERFORMANCE**: FastAPI backend with async operations and connection pooling
+- **💾 DATABASE**: SQLite integration with vector store and embedding models
+- **🔍 SEARCH**: Semantic similarity search with configurable thresholds
+- **💬 CHAT**: Real-time streaming responses with Server-Sent Events
+- **🤖 RAG**: Complete RAG pipeline with context management
 
 ## 🔧 Configuration
 

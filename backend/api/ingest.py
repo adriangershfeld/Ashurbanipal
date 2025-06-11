@@ -8,6 +8,7 @@ import logging
 import os
 import time
 from pathlib import Path
+import aiofiles
 
 from utils.file_loader import FileLoader
 from utils.pdf_extractor import PDFExtractor
@@ -56,21 +57,16 @@ async def ingest_folder(request: IngestRequest):
             raise HTTPException(status_code=404, detail="Folder not found")
         if not path.is_dir():
             raise HTTPException(status_code=400, detail="Path is not a directory")
-              # Validate file types
+            
+        # Validate file types
         valid_extensions = [ext for ext in request.file_types if InputSanitizer.sanitize_filename(f"test{ext}")]
         if not valid_extensions:
             raise HTTPException(status_code=400, detail="No valid file types provided")
             
         logger.info(f"Starting folder ingestion: {folder_path}")
-        logger.info(f"File types: {valid_extensions}, Recursive: {request.recursive}")        # Import required modules
-        from utils.file_loader import FileLoader
-        from utils.pdf_extractor import PDFExtractor
-        from utils.docx_extractor import DOCXExtractor
-        from embeddings.store import VectorStore
-        from embeddings.chunker import TextChunker
-        from embeddings.embedder import EmbeddingModel
+        logger.info(f"File types: {valid_extensions}, Recursive: {request.recursive}")
         
-        # Initialize components
+        # Initialize components once and reuse them
         file_loader = FileLoader(supported_extensions=valid_extensions)
         pdf_extractor = PDFExtractor()
         docx_extractor = DOCXExtractor()
@@ -94,7 +90,8 @@ async def ingest_folder(request: IngestRequest):
                     chunks_created=0,
                     processing_time_ms=(time.time() - start_time) * 1000
                 )
-              # 2. Process each file
+            
+            # 2. Process each file with proper error handling and resource cleanup
             for file_info in files:
                 try:
                     filepath = file_info['filepath']
@@ -103,40 +100,26 @@ async def ingest_folder(request: IngestRequest):
                     
                     # Check if file already exists in vector store
                     if vector_store.file_exists(filepath):
-                        logger.info(f"File already processed: {filename}")                    # 3. Extract text from file
-                    text_content = ""
-                    file_extension = filepath.lower().split('.')[-1]
+                        logger.info(f"File already processed: {filename}")
+                        continue
                     
-                    if file_extension in ['pdf']:
-                        # PDF extractor returns a dict, get the text field
-                        pdf_result = pdf_extractor.extract_text(filepath)
-                        if isinstance(pdf_result, dict):
-                            text_content = pdf_result.get('text', '')
-                        else:
-                            text_content = str(pdf_result)
-                    elif file_extension in ['txt', 'md', 'py']:
-                        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                            text_content = f.read()
-                    elif file_extension == 'docx':
-                        # DOCX extractor
-                        docx_result = docx_extractor.extract_text(filepath)
-                        if isinstance(docx_result, dict):
-                            text_content = docx_result.get('text', '')
-                        else:
-                            text_content = str(docx_result)
+                    # 3. Extract text from file with proper resource management
+                    text_content = await _extract_text_from_file(
+                        filepath, pdf_extractor, docx_extractor
+                    )
                     
                     if not text_content or len(text_content.strip()) < 50:
                         logger.warning(f"No content extracted from {filename}")
                         continue
                     
                     # 4. Chunk the text
-                    chunks = chunker.chunk_text(text_content, filepath, {"file_type": file_extension})
+                    chunks = chunker.chunk_text(text_content, filepath, {"file_type": Path(filepath).suffix[1:]})
                     logger.info(f"Created {len(chunks)} chunks from {filename}")
                     
                     if not chunks:
                         continue
                     
-                    # 5. Generate embeddings
+                    # 5. Generate embeddings in batches to manage memory
                     chunk_texts = [chunk.content for chunk in chunks]
                     embeddings = embedder.batch_embed(chunk_texts)
                     
@@ -149,7 +132,7 @@ async def ingest_folder(request: IngestRequest):
                     logger.info(f"Successfully processed {filename}: {len(chunks)} chunks")
                     
                 except Exception as file_error:
-                    logger.error(f"Error processing file {file_info.get('name', 'unknown')}: {str(file_error)}")
+                    logger.error(f"Error processing file {file_info.get('filename', 'unknown')}: {str(file_error)}")
                     continue
             
             processing_time = (time.time() - start_time) * 1000
@@ -178,6 +161,37 @@ async def ingest_folder(request: IngestRequest):
     except Exception as e:
         logger.error(f"Folder ingestion error: {str(e)}")
         raise HTTPException(status_code=500, detail="Folder ingestion failed")
+
+async def _extract_text_from_file(filepath: str, pdf_extractor, docx_extractor) -> str:
+    """Extract text from file with proper async handling and error management"""
+    try:
+        file_extension = Path(filepath).suffix[1:].lower()
+        text_content = ""
+        
+        if file_extension == 'pdf':
+            # PDF extractor returns a dict, get the text field
+            pdf_result = pdf_extractor.extract_text(filepath)
+            if isinstance(pdf_result, dict):
+                text_content = pdf_result.get('text', '')
+            else:
+                text_content = str(pdf_result)
+        elif file_extension in ['txt', 'md', 'py']:
+            # Use async file reading for better performance
+            async with aiofiles.open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                text_content = await f.read()
+        elif file_extension == 'docx':
+            # DOCX extractor
+            docx_result = docx_extractor.extract_text(filepath)
+            if isinstance(docx_result, dict):
+                text_content = docx_result.get('text', '')
+            else:
+                text_content = str(docx_result)
+        
+        return text_content
+        
+    except Exception as e:
+        logger.error(f"Error extracting text from {filepath}: {str(e)}")
+        return ""
 
 @router.post("/ingest/file")
 async def ingest_single_file(file: UploadFile = File(...)):
