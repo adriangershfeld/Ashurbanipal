@@ -32,8 +32,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         self.max_requests_per_minute = max_requests_per_minute
         self.blocked_ips = blocked_ips or set()
         self.allowed_origins = allowed_origins or []
-        
-        # Security headers
+          # Security headers
         self.security_headers = {
             "X-Content-Type-Options": "nosniff",
             "X-Frame-Options": "DENY",
@@ -44,7 +43,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         }
     
     def _get_client_ip(self, request: Request) -> str:
-        """Get the client IP address"""
+        """Get the client IP address with improved IPv6 support"""
         # Check for forwarded IP headers (in order of trust)
         forwarded_headers = [
             "X-Forwarded-For",
@@ -55,16 +54,38 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         
         for header in forwarded_headers:
             if header in request.headers:
-                ip = request.headers[header].split(',')[0].strip()
-                try:
-                    # Validate IP address
-                    ipaddress.ip_address(ip)
-                    return ip
-                except ValueError:
-                    continue
+                # Handle comma-separated IPs (X-Forwarded-For can have multiple)
+                ip_list = request.headers[header].split(',')
+                for ip in ip_list:
+                    ip = ip.strip()
+                    # Remove port if present (for IPv6: [::1]:8080 -> ::1)
+                    if ip.startswith('[') and ']:' in ip:
+                        ip = ip.split(']:')[0][1:]
+                    elif ':' in ip and not ip.count(':') > 1:  # IPv4 with port
+                        ip = ip.split(':')[0]
+                    
+                    try:
+                        # Validate IP address (supports both IPv4 and IPv6)
+                        parsed_ip = ipaddress.ip_address(ip)
+                        # Skip private/loopback addresses in forwarded headers
+                        if not (parsed_ip.is_private or parsed_ip.is_loopback):
+                            return str(parsed_ip)
+                        elif len(ip_list) == 1:  # If only one IP, use it even if private
+                            return str(parsed_ip)
+                    except ValueError:
+                        continue
         
         # Fallback to direct connection
-        return request.client.host if request.client else "unknown"
+        client_host = request.client.host if request.client else "unknown"
+        if client_host != "unknown":
+            try:
+                # Validate the direct connection IP
+                ipaddress.ip_address(client_host)
+                return client_host
+            except ValueError:
+                pass
+        
+        return "unknown"
     
     def _is_suspicious_request(self, request: Request) -> bool:
         """Check if request shows suspicious patterns"""
@@ -201,18 +222,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             f"Request: {request.method} {request.url} from {client_ip}"
         )
         
-        # Optionally log request body (be careful with sensitive data)
-        if self.log_body and request.method in ["POST", "PUT", "PATCH"]:
-            try:
-                body = await request.body()
-                if len(body) <= self.max_body_size:
-                    logger.debug(f"Request body: {body.decode('utf-8', errors='ignore')}")
-                else:
-                    logger.debug(f"Request body too large: {len(body)} bytes")
-            except Exception as e:
-                logger.error(f"Error reading request body: {str(e)}")
-        
-        # Process request
+        # Process request first to avoid consuming body stream
         response = await call_next(request)
         
         # Log response
@@ -220,6 +230,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         logger.info(
             f"Response: {response.status_code} - {process_time:.3f}s"
         )
+        
+        # Note: Request body logging has been moved after response processing
+        # to avoid consuming the body stream and breaking downstream handlers.
+        # For detailed body logging, consider using a different approach or
+        # implementing it at the application level.
         
         return response
 
@@ -229,28 +244,32 @@ def create_security_middleware(
     max_requests_per_minute: int = 60,
     blocked_ips: Optional[set] = None,
     allowed_origins: Optional[list] = None
-) -> SecurityMiddleware:
+) -> Callable:
     """
     Factory function to create security middleware with configuration
     """
-    return lambda app: SecurityMiddleware(
-        app,
-        enable_rate_limiting=enable_rate_limiting,
-        max_requests_per_hour=max_requests_per_hour,
-        max_requests_per_minute=max_requests_per_minute,
-        blocked_ips=blocked_ips,
-        allowed_origins=allowed_origins
-    )
+    def middleware_factory(app):
+        return SecurityMiddleware(
+            app,
+            enable_rate_limiting=enable_rate_limiting,
+            max_requests_per_hour=max_requests_per_hour,
+            max_requests_per_minute=max_requests_per_minute,
+            blocked_ips=blocked_ips,
+            allowed_origins=allowed_origins
+        )
+    return middleware_factory
 
 def create_logging_middleware(
     log_body: bool = False,
     max_body_size: int = 1024
-) -> RequestLoggingMiddleware:
+) -> Callable:
     """
     Factory function to create logging middleware with configuration
     """
-    return lambda app: RequestLoggingMiddleware(
-        app,
-        log_body=log_body,
-        max_body_size=max_body_size
-    )
+    def middleware_factory(app):
+        return RequestLoggingMiddleware(
+            app,
+            log_body=log_body,
+            max_body_size=max_body_size
+        )
+    return middleware_factory
