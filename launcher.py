@@ -1,5 +1,5 @@
 """
-Ptaḥ Simple Launcher - Basic working version
+Ptaḥ Simple Launcher - Basic working version (Fixed)
 """
 
 import os
@@ -42,7 +42,8 @@ class SimpleLauncher:
         try:
             self.processes["backend"] = subprocess.Popen(
                 [sys.executable, "app.py"],
-                cwd=backend_dir,                env=os.environ.copy(),
+                cwd=backend_dir,
+                env=os.environ.copy(),
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
@@ -93,8 +94,8 @@ class SimpleLauncher:
             logger.error(f"Failed to start frontend: {e}")
             return False
     
-    def start_browser(self, search_query=""):
-        """Start browser"""
+    def start_browser(self, search_query="", frontend_running=False):
+        """Start browser - intelligently choose what to open"""
         logger.info("Starting browser...")
         
         try:
@@ -103,17 +104,29 @@ class SimpleLauncher:
             
             launcher = BrowserLauncher()
             
-            if search_query:
+            # Decision logic for what to open in browser:
+            # 1. If frontend is running and no search query -> open frontend
+            # 2. If search query provided -> open search
+            # 3. Otherwise -> open default (about:blank)
+            
+            if frontend_running and self.is_port_in_use(5173) and not search_query:
+                success = launcher.launch("http://localhost:5173", private=False)
+                if success:
+                    logger.info("✓ Browser started with frontend URL")
+            elif search_query:
                 success = launcher.launch_research_session(search_query)
+                if success:
+                    logger.info("✓ Browser started with search query")
             else:
                 success = launcher.launch()
+                if success:
+                    logger.info("✓ Browser started")
             
-            if success:
-                logger.info("✓ Browser started")
-                return True
-            else:
+            if not success:
                 logger.error("Failed to start browser")
                 return False
+                
+            return True
                 
         except Exception as e:
             logger.error(f"Failed to start browser: {e}")
@@ -182,7 +195,8 @@ def main():
         if args.stop:
             launcher.stop_all()
             return
-          # Start components
+        
+        # Start components
         logger.info("🚀 Starting Ptaḥ...")
         
         success = True
@@ -193,27 +207,14 @@ def main():
         if not args.no_frontend and success:
             success &= launcher.start_frontend()
         
+        # Start browser with intelligent URL selection
         if not args.no_browser and success:
-            launcher.start_browser(args.search or "")
+            frontend_running = not args.no_frontend and launcher.is_port_in_use(5173)
+            launcher.start_browser(args.search or "", frontend_running)
         
         if success:
             logger.info("✅ All components started!")
             launcher.show_status()
-            
-            # Auto-open LibreWolf if frontend is running and browser was started
-            if not args.no_browser and not args.no_frontend and launcher.is_port_in_use(5173):
-                time.sleep(2)
-                # Use the browser launcher to open localhost in LibreWolf
-                try:
-                    sys.path.insert(0, str(launcher.project_root / "backend"))
-                    from utils.browser_launcher import BrowserLauncher
-                    browser_launcher = BrowserLauncher()
-                    browser_launcher.launch("http://localhost:5173", private=False)
-                    logger.info("✓ Opened frontend in LibreWolf")
-                except Exception as e:
-                    logger.warning(f"Failed to open LibreWolf, falling back to default browser: {e}")
-                    import webbrowser
-                    webbrowser.open("http://localhost:5173")
             
             # Keep running
             try:
@@ -230,4 +231,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-# This script is the entry point for the Ptaḥ Simple Launcher.
