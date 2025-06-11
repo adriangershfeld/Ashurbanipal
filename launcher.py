@@ -10,7 +10,7 @@ import logging
 import argparse
 from pathlib import Path
 
-# Configure logging
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class SimpleLauncher:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
-            # Wait for startup
+
             for _ in range(30):
                 if self.is_port_in_use(8000):
                     logger.info(f"✓ Backend started (PID: {self.processes['backend'].pid})")
@@ -71,7 +71,7 @@ class SimpleLauncher:
         frontend_dir = self.project_root / "frontend"
         
         try:
-            # Use shell=True to ensure npm is found in PATH
+
             self.processes["frontend"] = subprocess.Popen(
                 ["npm", "run", "dev"],
                 cwd=frontend_dir,
@@ -80,7 +80,7 @@ class SimpleLauncher:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
-            # Wait for startup
+
             for _ in range(30):
                 if self.is_port_in_use(5173):
                     logger.info(f"✓ Frontend started (PID: {self.processes['frontend'].pid})")
@@ -104,10 +104,7 @@ class SimpleLauncher:
             
             launcher = BrowserLauncher()
             
-            # Decision logic for what to open in browser:
-            # 1. If frontend is running and no search query -> open frontend
-            # 2. If search query provided -> open search
-            # 3. Otherwise -> open default (about:blank)
+
             
             if frontend_running and self.is_port_in_use(5173) and not search_query:
                 success = launcher.launch("http://localhost:5173", private=False)
@@ -155,13 +152,13 @@ class SimpleLauncher:
         print("PTAḤ STATUS")
         print("="*50)
         
-        # Check backend
+
         if self.is_port_in_use(8000):
             print("✓ Backend API          RUNNING    http://127.0.0.1:8000")
         else:
             print("✗ Backend API          STOPPED")
         
-        # Check frontend  
+
         if self.is_port_in_use(5173):
             print("✓ Frontend Server      RUNNING    http://localhost:5173")
         else:
@@ -196,7 +193,7 @@ def main():
             launcher.stop_all()
             return
         
-        # Start components
+
         logger.info("🚀 Starting Ptaḥ...")
         
         success = True
@@ -207,7 +204,7 @@ def main():
         if not args.no_frontend and success:
             success &= launcher.start_frontend()
         
-        # Start browser with intelligent URL selection
+
         if not args.no_browser and success:
             frontend_running = not args.no_frontend and launcher.is_port_in_use(5173)
             launcher.start_browser(args.search or "", frontend_running)
@@ -216,7 +213,7 @@ def main():
             logger.info("✅ All components started!")
             launcher.show_status()
             
-            # Keep running
+
             try:
                 while True:
                     time.sleep(1)
