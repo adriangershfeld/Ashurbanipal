@@ -8,7 +8,8 @@ import type {
   IngestRequest,
   IngestResponse,
   CorpusStatus,
-  FileInfo
+  FileInfo,
+  SearchResult
 } from '../types';
 
 // Configure axios instance
@@ -54,6 +55,78 @@ export const queryApi = {
   chat: async (request: ChatRequest): Promise<ChatResponse> => {
     const response = await api.post('/chat', request);
     return response.data;
+  },
+
+  chatStream: async (
+    request: ChatRequest,
+    onChunk: (chunk: string) => void,
+    onSources: (sources: SearchResult[]) => void,
+    onError: (error: string) => void,
+    onComplete: (metadata: any) => void
+  ): Promise<void> => {
+    try {
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No reader available for response stream');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+          // Process complete SSE events
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            // Event type information - currently not used but could be for future event handling
+            continue;
+          }
+          
+          if (line.startsWith('data:')) {
+            try {
+              const data = JSON.parse(line.slice(5).trim());
+              
+              // Handle different event types based on data structure
+              if (data.sources) {
+                onSources(data.sources);
+              } else if (data.content) {
+                onChunk(data.content);
+              } else if (data.error) {
+                onError(data.error);
+                return;
+              } else if (data.response_time_ms !== undefined) {
+                onComplete(data);
+                return;
+              }
+            } catch (parseError) {
+              console.warn('Failed to parse SSE data:', line);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Streaming error:', error);
+      onError(error instanceof Error ? error.message : 'Unknown streaming error');
+    }
   },
 
   findSimilar: async (chunkId: string, limit: number = 5): Promise<any> => {

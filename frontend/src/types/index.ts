@@ -30,6 +30,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  sources?: SearchResult[];
+  response_time_ms?: number;
 }
 
 export interface ChatResponse {
@@ -90,6 +92,7 @@ export interface ChatUIProps {
   onSendMessage: (message: string) => void;
   messages: ChatMessage[];
   loading?: boolean;
+  onStreamMessage?: (message: string) => void;
 }
 
 export interface FileViewerProps {

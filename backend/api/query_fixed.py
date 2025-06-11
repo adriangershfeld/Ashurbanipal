@@ -103,9 +103,9 @@ class ChatRequest(BaseModel):
     @field_validator('history')
     @classmethod 
     def validate_history(cls, v):
-        if len(v) > MAX_CHAT_HISTORY_ITEMS:
-            # Keep only the most recent messages
-            v = v[-MAX_CHAT_HISTORY_ITEMS:]
+        if len(v) > 50:
+            # Keep only the most recent 50 messages
+            v = v[-50:]
         
         # Validate each message in history
         for msg in v:

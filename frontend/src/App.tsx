@@ -86,11 +86,13 @@ const App: React.FC = () => {
         history: chatMessages,
         use_rag: true
       });
-
+      
       const assistantMessage: ChatMessage = {
         role: 'assistant',
         content: response.response,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        sources: response.sources,
+        response_time_ms: response.response_time_ms
       };
 
       setChatMessages(prev => [...prev, assistantMessage]);
@@ -106,6 +108,90 @@ const App: React.FC = () => {
       setIsChatting(false);
     }
   };
+
+  const handleStreamMessage = async (message: string) => {
+    const userMessage: ChatMessage = {
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString()
+    };    setChatMessages(prev => [...prev, userMessage]);
+
+    // Create placeholder assistant message that will be updated
+    const assistantMessage: ChatMessage = {
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString()
+    };
+
+    setChatMessages(prev => [...prev, assistantMessage]);    try {
+      setIsChatting(true);
+      let fullResponse = '';
+      let responseTimeMs = 0;
+
+      await queryApi.chatStream(
+        {
+          message,
+          history: chatMessages,
+          use_rag: true
+        },
+        // onChunk
+        (chunk: string) => {
+          fullResponse += chunk;
+          setChatMessages(prev => 
+            prev.map((msg, index) => 
+              index === prev.length - 1 
+                ? { ...msg, content: fullResponse }
+                : msg
+            )
+          );
+        },
+        // onSources
+        (streamSources: SearchResult[]) => {
+          setChatMessages(prev => 
+            prev.map((msg, index) => 
+              index === prev.length - 1 
+                ? { ...msg, sources: streamSources }
+                : msg
+            )
+          );
+        },
+        // onError
+        (error: string) => {
+          console.error('Streaming error:', error);
+          setChatMessages(prev => 
+            prev.map((msg, index) => 
+              index === prev.length - 1 
+                ? { ...msg, content: `Error: ${error}` }
+                : msg
+            )
+          );
+        },
+        // onComplete
+        (metadata: any) => {
+          responseTimeMs = metadata.response_time_ms;
+          setChatMessages(prev => 
+            prev.map((msg, index) => 
+              index === prev.length - 1 
+                ? { ...msg, response_time_ms: responseTimeMs }
+                : msg
+            )
+          );
+        }
+      );
+    } catch (error) {
+      console.error('Streaming chat failed:', error);
+      setChatMessages(prev => 
+        prev.map((msg, index) => 
+          index === prev.length - 1 
+            ? { ...msg, content: 'Sorry, I encountered an error processing your request. Please try again.' }
+            : msg
+        )
+      );
+    } finally {
+      setIsChatting(false);
+    }
+  };
+
   const handleResultClick = (result: SearchResult) => {
     // TODO: Implement result click handling
     console.log('Result clicked:', result);
@@ -190,12 +276,11 @@ const App: React.FC = () => {
               />
             </div>
           </div>
-        )}
-
-        {currentMode === 'chat' && (
+        )}        {currentMode === 'chat' && (
           <div className="chat-mode">
             <ChatUI
               onSendMessage={handleChatMessage}
+              onStreamMessage={handleStreamMessage}
               messages={chatMessages}
               loading={isChatting}
             />

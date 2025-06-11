@@ -103,9 +103,9 @@ class ChatRequest(BaseModel):
     @field_validator('history')
     @classmethod 
     def validate_history(cls, v):
-        if len(v) > MAX_CHAT_HISTORY_ITEMS:
-            # Keep only the most recent messages
-            v = v[-MAX_CHAT_HISTORY_ITEMS:]
+        if len(v) > 50:
+            # Keep only the most recent 50 messages
+            v = v[-50:]
         
         # Validate each message in history
         for msg in v:
@@ -143,8 +143,7 @@ async def semantic_search(request: QueryRequest, http_request: Request):
         
         # Generate embedding for the query
         query_embedding = embedding_model.embed_query(request.query)
-        
-        # Perform similarity search
+          # Perform similarity search
         search_results = vector_store.search(
             query_embedding=query_embedding,
             limit=request.limit,
@@ -195,8 +194,7 @@ async def chat_with_rag(request: ChatRequest, http_request: Request):
     
     try:
         logger.info(f"Chat request from {client_ip}: '{request.message[:50]}...' (use_rag: {request.use_rag})")
-        
-        # Get RAG pipeline singleton
+          # Get RAG pipeline singleton
         rag = get_rag_pipeline()
         if not rag:
             logger.error("RAG pipeline not available")
@@ -230,8 +228,7 @@ async def chat_with_rag(request: ChatRequest, http_request: Request):
             response=getattr(rag_response, 'response', ''),
             sources=response_sources,
             response_time_ms=getattr(rag_response, 'response_time_ms', (time.time() - start_time) * 1000)
-        )
-        
+        )        
         logger.info(f"Chat completed in {getattr(rag_response, 'response_time_ms', (time.time() - start_time) * 1000):.2f}ms with {len(response_sources)} sources")
         return response
     
