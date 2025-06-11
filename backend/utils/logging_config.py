@@ -1,5 +1,5 @@
 """
-Logging configuration for the Ashurbanipal backend
+Logging configuration for the Ptaḥ backend
 """
 import logging
 import logging.config

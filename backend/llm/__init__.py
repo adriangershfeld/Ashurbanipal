@@ -1,1 +1,1 @@
-# LLM package for Ashurbanipal Local AI Research Assistant
+# LLM package for Ptaḥ Local AI Research Assistant

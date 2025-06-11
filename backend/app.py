@@ -17,7 +17,7 @@ from utils.caching import clear_all_caches, get_cache_stats
 # Set up logging
 setup_logging(
     log_level=os.getenv("LOG_LEVEL", "INFO"),
-    log_file=os.getenv("LOG_FILE", "logs/ashurbanipal.log")
+    log_file=os.getenv("LOG_FILE", "logs/ptah.log")
 )
 
 logger = get_logger(__name__)
@@ -136,7 +136,7 @@ async def clear_caches():
 @app.on_event("startup")
 async def startup_event():
     """Application startup tasks"""
-    logger.info("Starting Ashurbanipal backend...")
+    logger.info("Starting Ptaḥ backend...")
     
     # Initialize async components
     try:
@@ -146,12 +146,12 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize async vector store: {str(e)}")
     
-    logger.info("Ashurbanipal backend started successfully")
+    logger.info("Ptaḥ backend started successfully")
     
 @app.on_event("shutdown")
 async def shutdown_event():
     """Application shutdown tasks"""
-    logger.info("Shutting down Ashurbanipal backend...")
+    logger.info("Shutting down Ptaḥ backend...")
     
     # Clean up async components
     try:
@@ -176,7 +176,7 @@ async def shutdown_event():
     except Exception as e:
         logger.error(f"Error clearing caches: {str(e)}")
     
-    logger.info("Ashurbanipal backend shutdown complete")
+    logger.info("Ptaḥ backend shutdown complete")
 
 if __name__ == "__main__":
     # Development server configuration

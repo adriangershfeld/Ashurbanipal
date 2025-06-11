@@ -1,1 +1,1 @@
-# Backend package for Ashurbanipal Local AI Research Assistant
+# Backend package for Ptaḥ Local AI Research Assistant
