@@ -25,6 +25,8 @@ logger = get_logger(__name__)
 from api.query import router as query_router
 from api.ingest import router as ingest_router
 from api.files import router as files_router
+from api.analytics import router as analytics_router
+from api.browser import router as browser_router
 
 app = FastAPI(
     title="Local AI Research Assistant",
@@ -74,6 +76,8 @@ try:
     app.include_router(query_router, prefix="/api", tags=["query"])
     app.include_router(ingest_router, prefix="/api", tags=["ingest"])
     app.include_router(files_router, prefix="/api", tags=["files"])
+    app.include_router(analytics_router, prefix="/api", tags=["analytics"])
+    app.include_router(browser_router, prefix="/api", tags=["browser"])
     logger.info("API routers configured successfully")
 except Exception as e:
     logger.error(f"Failed to configure API routers: {str(e)}")

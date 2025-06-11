@@ -11,6 +11,7 @@ from pathlib import Path
 
 from utils.file_loader import FileLoader
 from utils.pdf_extractor import PDFExtractor
+from utils.docx_extractor import DOCXExtractor
 from utils.sanitization import InputSanitizer
 from embeddings.chunker import TextChunker
 from embeddings.embedder import EmbeddingModel
@@ -61,10 +62,10 @@ async def ingest_folder(request: IngestRequest):
             raise HTTPException(status_code=400, detail="No valid file types provided")
             
         logger.info(f"Starting folder ingestion: {folder_path}")
-        logger.info(f"File types: {valid_extensions}, Recursive: {request.recursive}")
-          # Import required modules
+        logger.info(f"File types: {valid_extensions}, Recursive: {request.recursive}")        # Import required modules
         from utils.file_loader import FileLoader
         from utils.pdf_extractor import PDFExtractor
+        from utils.docx_extractor import DOCXExtractor
         from embeddings.store import VectorStore
         from embeddings.chunker import TextChunker
         from embeddings.embedder import EmbeddingModel
@@ -72,6 +73,7 @@ async def ingest_folder(request: IngestRequest):
         # Initialize components
         file_loader = FileLoader(supported_extensions=valid_extensions)
         pdf_extractor = PDFExtractor()
+        docx_extractor = DOCXExtractor()
         vector_store = VectorStore()
         chunker = TextChunker()
         embedder = EmbeddingModel()
@@ -101,8 +103,7 @@ async def ingest_folder(request: IngestRequest):
                     
                     # Check if file already exists in vector store
                     if vector_store.file_exists(filepath):
-                        logger.info(f"File already processed: {filename}")
-                        continue                    # 3. Extract text from file
+                        logger.info(f"File already processed: {filename}")                    # 3. Extract text from file
                     text_content = ""
                     file_extension = filepath.lower().split('.')[-1]
                     
@@ -116,6 +117,13 @@ async def ingest_folder(request: IngestRequest):
                     elif file_extension in ['txt', 'md', 'py']:
                         with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                             text_content = f.read()
+                    elif file_extension == 'docx':
+                        # DOCX extractor
+                        docx_result = docx_extractor.extract_text(filepath)
+                        if isinstance(docx_result, dict):
+                            text_content = docx_result.get('text', '')
+                        else:
+                            text_content = str(docx_result)
                     
                     if not text_content or len(text_content.strip()) < 50:
                         logger.warning(f"No content extracted from {filename}")
@@ -174,7 +182,12 @@ async def ingest_folder(request: IngestRequest):
 @router.post("/ingest/file")
 async def ingest_single_file(file: UploadFile = File(...)):
     """Ingest a single uploaded file"""
+    import tempfile
+    import os
+    
     try:
+        start_time = time.time()
+        
         # Validate file
         if not file.filename:
             raise HTTPException(status_code=400, detail="No filename provided")
@@ -186,21 +199,86 @@ async def ingest_single_file(file: UploadFile = File(...)):
         if file.size and file.size > 50 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="File too large (max 50MB)")
             
+        # Check file extension
+        file_extension = file.filename.lower().split('.')[-1] if '.' in file.filename else ''
+        supported_extensions = ['pdf', 'txt', 'md', 'docx']
+        if file_extension not in supported_extensions:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type. Supported: {supported_extensions}")
+            
         logger.info(f"Ingesting uploaded file: {file.filename}")
+          # Import required modules
+        from utils.pdf_extractor import PDFExtractor
+        from utils.docx_extractor import DOCXExtractor
+        from embeddings.store import VectorStore
+        from embeddings.chunker import TextChunker
+        from embeddings.embedder import EmbeddingModel
         
-        # TODO: Implement single file ingestion
+        # Initialize components
+        pdf_extractor = PDFExtractor()
+        docx_extractor = DOCXExtractor()
+        vector_store = VectorStore()
+        chunker = TextChunker()
+        embedder = EmbeddingModel()
+        
         # 1. Save uploaded file temporarily
-        # 2. Extract text based on file type
-        # 3. Chunk and embed
-        # 4. Store in database
-        # 5. Clean up temporary file
-        
-        return {
-            "status": "completed", 
-            "filename": file.filename,
-            "size": file.size,
-            "message": "File ingestion not fully implemented yet"
-        }
+        temp_file = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_extension}") as temp_file:
+                content = await file.read()
+                temp_file.write(content)
+                temp_filepath = temp_file.name
+              # 2. Extract text based on file type
+            text_content = ""
+            if file_extension == 'pdf':
+                pdf_result = pdf_extractor.extract_text(temp_filepath)
+                if isinstance(pdf_result, dict):
+                    text_content = pdf_result.get('text', '')
+                else:
+                    text_content = str(pdf_result)
+            elif file_extension in ['txt', 'md']:
+                with open(temp_filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                    text_content = f.read()
+            elif file_extension == 'docx':
+                # DOCX extractor
+                docx_result = docx_extractor.extract_text(temp_filepath)
+                if isinstance(docx_result, dict):
+                    text_content = docx_result.get('text', '')
+                else:
+                    text_content = str(docx_result)
+            
+            if not text_content or len(text_content.strip()) < 50:
+                raise HTTPException(status_code=400, detail="No readable content found in file")
+            
+            # 3. Chunk the text
+            chunks = chunker.chunk_text(text_content, file.filename, {"file_type": file_extension})
+            logger.info(f"Created {len(chunks)} chunks from {file.filename}")
+            
+            if not chunks:
+                raise HTTPException(status_code=400, detail="Failed to create text chunks")
+            
+            # 4. Generate embeddings
+            chunk_texts = [chunk.content for chunk in chunks]
+            embeddings = embedder.batch_embed(chunk_texts)
+            
+            # 5. Store in vector database
+            vector_store.add_chunks(chunks, embeddings)
+            
+            processing_time = (time.time() - start_time) * 1000
+            logger.info(f"Successfully processed {file.filename}: {len(chunks)} chunks in {processing_time:.2f}ms")
+            
+            return {
+                "status": "completed", 
+                "filename": file.filename,
+                "size": file.size,
+                "chunks_created": len(chunks),
+                "processing_time_ms": processing_time,
+                "message": "File successfully ingested"
+            }
+            
+        finally:
+            # 6. Clean up temporary file
+            if temp_file and os.path.exists(temp_filepath):
+                os.unlink(temp_filepath)
     
     except HTTPException:
         raise

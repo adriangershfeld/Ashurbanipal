@@ -6,16 +6,19 @@ import {
   Database,
   Brain,
   Folder,
-  Globe
+  Globe,
+  BarChart3
 } from 'lucide-react';
 
 import SearchBar from './components/SearchBar';
 import ResultList from './components/ResultList';
 import ChatUI from './components/ChatUI';
-import FileViewer from './components/FileViewer';
+import FileViewer, { FileUpload, FileManager } from './components/FileViewer';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
+import BrowserAutomation from './components/BrowserAutomation';
 import ErrorBoundary from './components/ErrorBoundary';
 
-import { queryApi, ingestApi } from './api';
+import { queryApi, ingestApi, filesApi, browserApi } from './api';
 import type {
   SearchResult,
   ChatMessage,
@@ -31,6 +34,12 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [corpusStatus, setCorpusStatus] = useState<CorpusStatus | null>(null);
+  
+  // File management state
+  const [files, setFiles] = useState<FileInfo[]>([]);
+  const [showFileUpload, setShowFileUpload] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [fileContent, setFileContent] = useState<string>('');
     // Loading states
   const [isSearching, setIsSearching] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
@@ -39,6 +48,7 @@ const App: React.FC = () => {
   // Load corpus status on mount
   useEffect(() => {
     loadCorpusStatus();
+    loadFiles();
   }, []);
 
   const loadCorpusStatus = async () => {
@@ -50,6 +60,70 @@ const App: React.FC = () => {
       console.error('Failed to load corpus status:', error);
     } finally {
       setIsLoadingStatus(false);
+    }
+  };
+  const loadFiles = async () => {
+    try {
+      const response = await filesApi.list(50, 0);
+      setFiles(response.files);
+    } catch (error) {
+      console.error('Failed to load files:', error);
+    }
+  };
+
+  const handleFileUpload = async (fileList: FileList) => {
+    try {
+      setUploadingFiles(true);
+      
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        await ingestApi.ingestFile(file);
+      }
+      
+      // Refresh files list and corpus status
+      await loadFiles();
+      await loadCorpusStatus();
+      setShowFileUpload(false);
+    } catch (error) {
+      console.error('File upload failed:', error);
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+  const handleFileSelect = async (file: FileInfo) => {
+    try {
+      // Load file content for viewing
+      const contentData = await filesApi.getContent(file.filename);
+      setFileContent(contentData.content || 'Content not available');
+      setSelectedFile(file);
+    } catch (error) {
+      console.error('Failed to load file content:', error);
+      setFileContent('Error loading file content');
+      setSelectedFile(file);
+    }
+  };
+  const handleFileDelete = async (filename: string) => {
+    try {
+      await filesApi.delete(filename);
+      await loadFiles();
+      await loadCorpusStatus();
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+    }
+  };
+  const handleLaunchBrowser = async () => {
+    try {
+      console.log('Launching browser for research session...');
+      const result = await browserApi.startResearchSession();
+      
+      if (result.success) {
+        console.log('Research session started successfully:', result.message);
+        // Optionally show a success notification to the user
+      } else {
+        console.error('Failed to start research session:', result.message);
+      }
+    } catch (error) {
+      console.error('Failed to launch browser:', error);
     }
   };
 
@@ -228,9 +302,7 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
-      </header>
-
-      {/* Navigation */}
+      </header>      {/* Navigation */}
       <nav className="app-nav">
         <button
           className={`nav-item ${currentMode === 'semantic' ? 'active' : ''}`}
@@ -252,6 +324,19 @@ const App: React.FC = () => {
         >
           <Files size={20} />
           <span>Files</span>
+        </button>        <button
+          className={`nav-item ${currentMode === 'analytics' ? 'active' : ''}`}
+          onClick={() => setCurrentMode('analytics')}
+        >
+          <BarChart3 size={20} />
+          <span>Analytics</span>
+        </button>
+        <button
+          className={`nav-item ${currentMode === 'browser' ? 'active' : ''}`}
+          onClick={() => setCurrentMode('browser')}
+        >
+          <Globe size={20} />
+          <span>Browser</span>
         </button>
       </nav>
 
@@ -285,45 +370,76 @@ const App: React.FC = () => {
               loading={isChatting}
             />
           </div>
+        )}        {currentMode === 'files' && (
+          <div className="files-mode">
+            <FileManager
+              files={files}
+              onFileSelect={handleFileSelect}
+              onFileDelete={handleFileDelete}
+              onUploadClick={() => setShowFileUpload(true)}
+            />
+          </div>
+        )}{currentMode === 'analytics' && (
+          <div className="analytics-mode">
+            <AnalyticsDashboard loading={isLoadingStatus} />
+          </div>
         )}
 
-        {currentMode === 'files' && (
-          <div className="files-mode">
-            <div className="coming-soon">
-              <Files size={48} />
-              <h3>File Management</h3>
-              <p>File browser and management coming soon...</p>
-            </div>
+        {currentMode === 'browser' && (
+          <div className="browser-mode">
+            <BrowserAutomation onSessionUpdate={() => {}} />
           </div>
         )}
       </main>
 
-      {/* Quick Actions Sidebar */}
-      <aside className="quick-actions">
-        <h3>Quick Actions</h3>
-        <button className="action-button">
-          <Folder size={16} />
-          <span>Ingest Folder</span>
-        </button>
-        <button className="action-button">
-          <Globe size={16} />
-          <span>Research Session</span>
-        </button>
-        <button className="action-button" onClick={loadCorpusStatus}>
-          <Database size={16} />
-          <span>Refresh Status</span>
-        </button>
-      </aside>
+      {/* File Upload Modal */}
+      {showFileUpload && (
+        <FileUpload
+          onUpload={handleFileUpload}
+          uploading={uploadingFiles}
+          onClose={() => setShowFileUpload(false)}
+        />
+      )}
 
       {/* File Viewer Modal */}
       {selectedFile && (
         <FileViewer
           file={selectedFile}
-          onClose={() => setSelectedFile(null)}
+          content={fileContent}
+          onClose={() => {
+            setSelectedFile(null);
+            setFileContent('');
+          }}
         />
-      )}
-
-      <style jsx>{`
+      )}      {/* Quick Actions Sidebar */}
+      <aside className="quick-actions">
+        <h3>Quick Actions</h3>
+        <button 
+          className="action-button"
+          onClick={() => setShowFileUpload(true)}
+        >
+          <Folder size={16} />
+          <span>Upload Files</span>
+        </button>
+        <button 
+          className="action-button"
+          onClick={handleLaunchBrowser}
+        >
+          <Globe size={16} />
+          <span>Research Session</span>
+        </button>
+        <button 
+          className="action-button"
+          onClick={() => setCurrentMode('analytics')}
+        >
+          <BarChart3 size={16} />
+          <span>View Analytics</span>
+        </button>
+        <button className="action-button" onClick={loadCorpusStatus}>
+          <Database size={16} />
+          <span>Refresh Status</span>
+        </button>
+      </aside>      <style jsx>{`
         .app {
           min-height: 100vh;
           background: #0f0f23;

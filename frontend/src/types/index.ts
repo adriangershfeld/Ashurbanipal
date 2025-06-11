@@ -112,7 +112,7 @@ export interface AppState {
   error: string | null;
 }
 
-export type SearchMode = 'semantic' | 'chat' | 'files';
+export type SearchMode = 'semantic' | 'chat' | 'files' | 'analytics' | 'browser';
 
 export interface SearchFilters {
   fileTypes: string[];

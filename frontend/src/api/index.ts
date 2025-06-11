@@ -151,6 +151,11 @@ export const filesApi = {
     return response.data;
   },
 
+  getContent: async (filename: string, maxLength: number = 10000): Promise<any> => {
+    const response = await api.get(`/files/${encodeURIComponent(filename)}/content?max_length=${maxLength}`);
+    return response.data;
+  },
+
   open: async (fileId: string): Promise<void> => {
     await api.post(`/files/open/${fileId}`);
   },
@@ -206,6 +211,80 @@ export const ingestApi = {
 export const healthApi = {
   check: async (): Promise<{ status: string; message: string }> => {
     const response = await api.get('/health');
+    return response.data;
+  }
+};
+
+// Analytics API
+export const analyticsApi = {
+  getOverview: async (): Promise<any> => {
+    const response = await api.get('/analytics/overview');
+    return response.data;
+  },
+
+  getSearchStats: async (): Promise<any> => {
+    const response = await api.get('/analytics/search-stats');
+    return response.data;
+  },
+
+  getDocumentStats: async (): Promise<any> => {
+    const response = await api.get('/analytics/document-stats');
+    return response.data;
+  }
+};
+
+// Browser Automation API
+export const browserApi = {
+  launch: async (searchQuery?: string, url?: string): Promise<any> => {
+    const response = await api.post('/browser/launch', {
+      search_query: searchQuery,
+      url: url,
+      private: true,
+      headless: false
+    });
+    return response.data;
+  },
+
+  startResearchSession: async (searchQuery?: string): Promise<any> => {
+    const response = await api.post('/browser/research-session', {
+      search_query: searchQuery,
+      monitor_clipboard: true
+    });
+    return response.data;
+  },
+
+  getStatus: async (): Promise<any> => {
+    const response = await api.get('/browser/status');
+    return response.data;
+  },
+
+  close: async (): Promise<any> => {
+    const response = await api.post('/browser/close');
+    return response.data;
+  },
+
+  startClipboardMonitoring: async (): Promise<any> => {
+    const response = await api.post('/clipboard/start-monitoring');
+    return response.data;
+  },
+
+  getWorkflowStatus: async (): Promise<any> => {
+    const response = await api.get('/automation/workflow-status');
+    return response.data;
+  },
+
+  getSessionStatus: async (sessionId: string): Promise<any> => {
+    const response = await api.get(`/research-session/${sessionId}/status`);
+    return response.data;
+  },
+
+  ingestSessionContent: async (sessionId: string): Promise<any> => {
+    const response = await api.post(`/research-session/${sessionId}/ingest`);
+    return response.data;
+  },
+
+  stopSession: async (sessionId: string): Promise<any> => {
+    const response = await api.delete(`/research-session/${sessionId}`);
     return response.data;
   }
 };

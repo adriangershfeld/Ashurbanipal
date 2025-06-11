@@ -240,3 +240,75 @@ async def get_corpus_stats():
     except Exception as e:
         logger.error(f"Stats retrieval error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get statistics")
+
+@router.get("/files/{filename}/content")
+async def get_file_content(filename: str, max_length: int = 10000):
+    """Get file content for preview"""
+    try:
+        # Validate filename
+        if not filename or not InputSanitizer.sanitize_filename(filename):
+            raise HTTPException(status_code=400, detail="Invalid filename")
+            
+        logger.info(f"Getting content for file: {filename}")
+        
+        # Import vector store to get file info
+        from embeddings.store import VectorStore
+        
+        store = VectorStore()
+        
+        # First try to find file by checking all files
+        files_data = store.get_files_list(limit=1000)  # Get a large list to search
+        file_info = None
+        
+        for file in files_data.get('files', []):
+            if file.get('filename') == filename:
+                file_info = file
+                break
+        
+        if not file_info:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Try to read original file content
+        file_path = file_info.get('filepath')
+        if file_path and os.path.exists(file_path):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read(max_length)
+                    return {
+                        "filename": filename,
+                        "content": content,
+                        "truncated": len(content) >= max_length,
+                        "source": "original_file"
+                    }
+            except UnicodeDecodeError:
+                # Try binary file handling for PDFs, etc.
+                pass
+        
+        # Fallback: get content from chunks using filepath
+        chunks = store.get_file_chunks(file_path) if file_path else []
+        if chunks:
+            # Combine first few chunks for preview
+            chunk_content = "\n\n".join([chunk.get('content', '') for chunk in chunks[:5]])
+            content = chunk_content[:max_length]
+            
+            return {
+                "filename": filename,
+                "content": content,
+                "truncated": len(chunk_content) > max_length,
+                "source": "chunks",
+                "total_chunks": len(chunks)
+            }
+        
+        # No content available
+        return {
+            "filename": filename,
+            "content": "",
+            "error": "Content not available for preview",
+            "source": "none"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Content retrieval error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve file content")
