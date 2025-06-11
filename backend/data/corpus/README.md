@@ -1,6 +1,6 @@
 # Default Corpus Folder
 
-This is the default location for your document corpus in Ashurbanipal.
+This is the default location for your document corpus in Ptaḥ.
 
 ## Usage
 

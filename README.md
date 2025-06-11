@@ -1,10 +1,11 @@
-# Ashurbanipal - Local AI Research Assistant
+# Ptaḥ - Local AI Research Assistant
 
 A privacy-focused, local-first AI research assistant that helps you search, analyze, and chat with your document corpus using semantic search and RAG (Retrieval-Augmented Generation).
 
 ## 🚀 Recent Updates (June 2025)
 
 ### ✅ **Critical Bug Fixes & Stability Improvements**
+
 - **🔧 Fixed Critical Indentation Error**: Resolved syntax error in streaming chat function that prevented application startup
 - **🛠️ Enhanced Error Handling**: Comprehensive error handling for streaming responses with proper resource cleanup
 - **⚡ Improved Performance**: Better memory management with response length limits and source count restrictions
@@ -12,6 +13,7 @@ A privacy-focused, local-first AI research assistant that helps you search, anal
 - **📊 Resource Management**: Added vector store size monitoring and automatic resource cleanup
 
 ### ✅ **API Improvements**
+
 - **💬 Robust Streaming Chat**: Enhanced Server-Sent Events implementation with better error recovery
 - **🔍 Enhanced Search Validation**: Improved chunk ID validation and similarity search endpoints
 - **📝 Better Logging**: More detailed performance metrics and debugging information
@@ -108,21 +110,21 @@ python launcher.py --stop
 
 #### **VS Code Integration**
 
-- **Ctrl+Shift+P** → "Tasks: Run Task" → "Start Ashurbanipal (Full)"
-- **F5** → "Debug Ashurbanipal Launcher"
+- **Ctrl+Shift+P** → "Tasks: Run Task" → "Start Ptaḥ (Full)"
+- **F5** → "Debug Ptaḥ Launcher"
 - Available tasks:
-  - Start Ashurbanipal (Full)
-  - Start Ashurbanipal (Backend Only)
-  - Start Ashurbanipal (Frontend Only)
+  - Start Ptaḥ (Full)
+  - Start Ptaḥ (Backend Only)
+  - Start Ptaḥ (Frontend Only)
   - Install Dependencies
   - Check Status
-  - Stop Ashurbanipal
+  - Stop Ptaḥ
 
 ### **🔧 Option 2: Manual Development Mode**
 
 ```powershell
 # Clone and navigate to project
-cd Ashurbanipal
+cd Ptaḥ
 
 # Backend setup (Terminal 1)
 cd backend
@@ -210,6 +212,7 @@ frontend/
 ## 📋 Changelog
 
 ### v2.1.0 - June 11, 2025
+
 - **🔧 CRITICAL FIX**: Fixed indentation syntax error in streaming chat endpoint
 - **⚡ PERFORMANCE**: Added memory management with response length limits (10,000 chars)
 - **🛡️ SECURITY**: Enhanced input validation with individual message length limits (5,000 chars)
@@ -220,6 +223,7 @@ frontend/
 - **🧹 CLEANUP**: Removed redundant placeholder RAG endpoint
 
 ### v2.0.0 - December 2024
+
 - **🎨 UI**: Complete frontend redesign with streaming chat and enhanced search
 - **🚀 PERFORMANCE**: FastAPI backend with async operations and connection pooling
 - **💾 DATABASE**: SQLite integration with vector store and embedding models
@@ -241,7 +245,7 @@ HOST=127.0.0.1
 PORT=8000
 
 # Database & Storage
-DATABASE_URL=sqlite:///data/ashurbanipal.db
+DATABASE_URL=sqlite:///data/ptah.db
 VECTOR_STORE_PATH=data/vector_store
 
 # Embedding Configuration
@@ -431,7 +435,7 @@ This project has reached **production-ready status** with comprehensive function
 
 ## 🏆 **Project Achievements**
 
-**Ashurbanipal** successfully demonstrates:
+**Ptaḥ** successfully demonstrates:
 
 - ✅ **Local-First AI**: Complete privacy-focused solution with no external dependencies
 - ✅ **Modern Full-Stack**: React + FastAPI with real-time streaming capabilities
@@ -446,7 +450,7 @@ MIT License - Feel free to use and modify for your research needs.
 
 ---
 
-**Ashurbanipal** - Named after the ancient Assyrian king who created one of the world's first organized libraries. Perfect for a modern digital research assistant! 📚
+**Ptaḥ** - Named after the ancient Egyptian god of craftsmen and architects, creator of the framework of the universe. Perfect for a modern AI that builds knowledge frameworks and architects intelligent responses! 🏛️
 
 **Current Status**: 🚀 **Production-Ready Full-Stack AI Research Assistant**
 

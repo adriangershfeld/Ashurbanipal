@@ -1,5 +1,5 @@
 """
-Configuration settings for Ashurbanipal
+Configuration settings for Ptaḥ
 """
 import os
 from pathlib import Path

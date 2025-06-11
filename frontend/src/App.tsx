@@ -301,7 +301,7 @@ const App: React.FC = () => {
         <div className="header-content">
           <div className="logo">
             <Brain size={24} />
-            <h1>Ashurbanipal</h1>
+            <h1>Ptaḥ</h1>
           </div>
             <div className="header-info">
             {isLoadingStatus ? (

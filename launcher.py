@@ -1,5 +1,5 @@
 """
-Ashurbanipal Simple Launcher - Basic working version
+Ptaḥ Simple Launcher - Basic working version
 """
 
 import os
@@ -139,7 +139,7 @@ class SimpleLauncher:
     def show_status(self):
         """Show current status"""
         print("\n" + "="*50)
-        print("ASHURBANIPAL STATUS")
+        print("PTAḤ STATUS")
         print("="*50)
         
         # Check backend
@@ -162,7 +162,7 @@ class SimpleLauncher:
         print("="*50 + "\n")
 
 def main():
-    parser = argparse.ArgumentParser(description="Ashurbanipal Simple Launcher")
+    parser = argparse.ArgumentParser(description="Ptaḥ Simple Launcher")
     parser.add_argument("--no-backend", action="store_true", help="Don't start backend")
     parser.add_argument("--no-frontend", action="store_true", help="Don't start frontend")
     parser.add_argument("--no-browser", action="store_true", help="Don't start browser")
@@ -183,7 +183,7 @@ def main():
             launcher.stop_all()
             return
           # Start components
-        logger.info("🚀 Starting Ashurbanipal...")
+        logger.info("🚀 Starting Ptaḥ...")
         
         success = True
         
@@ -230,4 +230,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-# This script is the entry point for the Ashurbanipal Simple Launcher.
+# This script is the entry point for the Ptaḥ Simple Launcher.
