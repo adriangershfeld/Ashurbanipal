@@ -8,6 +8,8 @@ import time
 import subprocess
 import logging
 import argparse
+import psutil
+import json
 from pathlib import Path
 
 
@@ -18,6 +20,7 @@ class SimpleLauncher:
     def __init__(self):
         self.project_root = Path(__file__).parent.absolute()
         self.processes = {}
+        self.pid_file = self.project_root / "ptah.pids"
         
     def is_port_in_use(self, port):
         """Check if a port is in use"""
@@ -30,12 +33,111 @@ class SimpleLauncher:
         except:
             return False
     
+    def save_pids(self):
+        """Save process IDs to file"""
+        pids = {}
+        for name, process in self.processes.items():
+            if process and process.poll() is None:
+                pids[name] = process.pid
+        
+        try:
+            with open(self.pid_file, 'w') as f:
+                json.dump(pids, f)
+        except Exception as e:
+            logger.warning(f"Failed to save PIDs: {e}")
+    
+    def load_pids(self):
+        """Load process IDs from file"""
+        if not self.pid_file.exists():
+            return {}
+        
+        try:
+            with open(self.pid_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load PIDs: {e}")
+            return {}
+    
+    def kill_existing_processes(self):
+        """Kill any existing Ptaḥ processes"""
+        logger.info("Checking for existing Ptaḥ processes...")
+        
+        saved_pids = self.load_pids()
+        killed_any = False
+        
+        for name, pid in saved_pids.items():
+            try:
+                if psutil.pid_exists(pid):
+                    process = psutil.Process(pid)
+                    cmdline = ' '.join(process.cmdline())
+                    if 'app.py' in cmdline or 'npm' in cmdline:
+                        logger.info(f"Killing existing {name} process (PID: {pid})")
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except psutil.TimeoutExpired:
+                            process.kill()
+                        killed_any = True
+            except (psutil.NoSuchProcess, psutil.TimeoutExpired, psutil.AccessDenied):
+                pass
+        
+        for port in [8000, 5173]:
+            if self.is_port_in_use(port):
+                self.kill_process_on_port(port)
+                killed_any = True
+        
+        if killed_any:
+            logger.info("Existing processes terminated")
+            time.sleep(2)
+        
+        if self.pid_file.exists():
+            self.pid_file.unlink()
+    
+    def kill_process_on_port(self, port):
+        """Kill process using a specific port"""
+        try:
+            import subprocess
+            import os
+            
+            if os.name == 'nt':  # Windows
+                result = subprocess.run(
+                    f'netstat -ano | findstr :{port}',
+                    shell=True, capture_output=True, text=True
+                )
+                for line in result.stdout.split('\n'):
+                    if f':{port}' in line and 'LISTENING' in line:
+                        parts = line.split()
+                        if len(parts) > 4:
+                            pid = parts[-1]
+                            try:
+                                subprocess.run(f'taskkill /F /PID {pid}', shell=True, check=True)
+                                logger.info(f"Killed process (PID: {pid}) using port {port}")
+                                return
+                            except:
+                                pass
+            else:  # Linux/Mac
+                result = subprocess.run(
+                    f'lsof -ti:{port}',
+                    shell=True, capture_output=True, text=True
+                )
+                if result.stdout.strip():
+                    pids = result.stdout.strip().split('\n')
+                    for pid in pids:
+                        try:
+                            subprocess.run(f'kill -9 {pid}', shell=True, check=True)
+                            logger.info(f"Killed process (PID: {pid}) using port {port}")
+                        except:
+                            pass
+        except Exception as e:
+            logger.warning(f"Failed to kill process on port {port}: {e}")
+    
+    def cleanup_on_exit(self):
+        """Cleanup when exiting"""
+        if self.pid_file.exists():
+            self.pid_file.unlink()
+    
     def start_backend(self):
         """Start backend server"""
-        if self.is_port_in_use(8000):
-            logger.info("Backend already running on port 8000")
-            return True
-            
         logger.info("Starting backend...")
         backend_dir = self.project_root / "backend"
         
@@ -47,6 +149,7 @@ class SimpleLauncher:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
+            self.save_pids()
 
             for _ in range(30):
                 if self.is_port_in_use(8000):
@@ -63,15 +166,10 @@ class SimpleLauncher:
     
     def start_frontend(self):
         """Start frontend server"""
-        if self.is_port_in_use(5173):
-            logger.info("Frontend already running on port 5173")
-            return True
-            
         logger.info("Starting frontend...")
         frontend_dir = self.project_root / "frontend"
         
         try:
-
             self.processes["frontend"] = subprocess.Popen(
                 ["npm", "run", "dev"],
                 cwd=frontend_dir,
@@ -80,6 +178,7 @@ class SimpleLauncher:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
+            self.save_pids()
 
             for _ in range(30):
                 if self.is_port_in_use(5173):
@@ -135,16 +234,24 @@ class SimpleLauncher:
         
         for name, process in self.processes.items():
             try:
-                logger.info(f"Stopping {name}...")
-                process.terminate()
-                process.wait(timeout=5)
-                logger.info(f"✓ {name} stopped")
-            except subprocess.TimeoutExpired:
-                process.kill()
-                logger.warning(f"Force killed {name}")
-            except:
-                pass
+                if process and process.poll() is None:
+                    logger.info(f"Stopping {name}...")
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                        logger.info(f"✓ {name} stopped")
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        logger.warning(f"Force killed {name}")
+            except Exception as e:
+                logger.warning(f"Error stopping {name}: {e}")
+        
+        for port in [8000, 5173]:
+            if self.is_port_in_use(port):
+                self.kill_process_on_port(port)
+        
         self.processes.clear()
+        self.cleanup_on_exit()
     
     def show_status(self):
         """Show current status"""
@@ -179,6 +286,7 @@ def main():
     parser.add_argument("--search", type=str, help="Search query for browser")
     parser.add_argument("--status", action="store_true", help="Show status")
     parser.add_argument("--stop", action="store_true", help="Stop all")
+    parser.add_argument("--install-deps", action="store_true", help="Install dependencies")
     
     args = parser.parse_args()
     
@@ -193,6 +301,17 @@ def main():
             launcher.stop_all()
             return
         
+        if args.install_deps:
+            logger.info("Installing dependencies...")
+            subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], 
+                          cwd=launcher.project_root, check=True)
+            subprocess.run(["npm", "install"], cwd=launcher.project_root / "frontend", 
+                          shell=True, check=True)
+            logger.info("✓ Dependencies installed")
+            return
+        
+        # Kill any existing processes before starting new ones
+        launcher.kill_existing_processes()
 
         logger.info("🚀 Starting Ptaḥ...")
         

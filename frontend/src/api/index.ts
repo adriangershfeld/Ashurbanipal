@@ -12,6 +12,33 @@ import type {
   SearchResult
 } from '../types';
 
+// Research project types
+export interface ResearchProject {
+  id: string;
+  name: string;
+  description: string;
+  created: string;
+  updated: string;
+  filesCount: number;
+  chunksCount: number;
+  tags: string[];
+  settings: Record<string, any>;
+}
+
+export interface CreateProjectRequest {
+  name: string;
+  description: string;
+  tags?: string[];
+  settings?: Record<string, any>;
+}
+
+export interface UpdateProjectRequest {
+  name?: string;
+  description?: string;
+  tags?: string[];
+  settings?: Record<string, any>;
+}
+
 // Configure axios instance
 const api = axios.create({
   baseURL: '/api',
@@ -158,6 +185,26 @@ export const filesApi = {
 
   open: async (fileId: string): Promise<void> => {
     await api.post(`/files/open/${fileId}`);
+  },  openFolder: async (folderPath: string): Promise<any> => {
+    try {
+      const response = await api.post('/files/open-folder', {
+        folder_path: folderPath
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to open folder:', error);
+      
+      // Enhanced error handling with specific messages
+      if (error.response?.status === 403) {
+        throw new Error('Permission denied: Cannot access this folder');
+      } else if (error.response?.status === 404) {
+        throw new Error('Folder not found');
+      } else if (error.response?.status === 400) {
+        throw new Error('Invalid folder path');
+      } else {
+        throw new Error(error.response?.data?.detail || 'Failed to open folder');
+      }
+    }
   },
 
   getChunks: async (fileId: string): Promise<any> => {
@@ -282,9 +329,53 @@ export const browserApi = {
     const response = await api.post(`/research-session/${sessionId}/ingest`);
     return response.data;
   },
-
   stopSession: async (sessionId: string): Promise<any> => {
     const response = await api.delete(`/research-session/${sessionId}`);
+    return response.data;
+  }
+};
+
+// Projects API
+export const projectsApi = {
+  list: async (): Promise<ResearchProject[]> => {
+    const response = await api.get('/projects');
+    return response.data;
+  },
+
+  get: async (projectId: string): Promise<ResearchProject> => {
+    const response = await api.get(`/projects/${projectId}`);
+    return response.data;
+  },
+
+  create: async (request: CreateProjectRequest): Promise<ResearchProject> => {
+    const response = await api.post('/projects', request);
+    return response.data;
+  },
+
+  update: async (projectId: string, request: UpdateProjectRequest): Promise<ResearchProject> => {
+    const response = await api.put(`/projects/${projectId}`, request);
+    return response.data;
+  },
+
+  delete: async (projectId: string): Promise<void> => {
+    await api.delete(`/projects/${projectId}`);
+  },
+
+  getFiles: async (projectId: string): Promise<any> => {
+    const response = await api.get(`/projects/${projectId}/files`);
+    return response.data;
+  },
+
+  addFile: async (projectId: string, fileId: string): Promise<void> => {
+    await api.post(`/projects/${projectId}/files/${fileId}`);
+  },
+
+  removeFile: async (projectId: string, fileId: string): Promise<void> => {
+    await api.delete(`/projects/${projectId}/files/${fileId}`);
+  },
+
+  getStats: async (): Promise<any> => {
+    const response = await api.get('/projects/stats');
     return response.data;
   }
 };

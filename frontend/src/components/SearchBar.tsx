@@ -1,25 +1,41 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Loader2, X } from 'lucide-react';
 import type { SearchBarProps } from '../types';
 
-const SearchBar: React.FC<SearchBarProps> = ({ 
+interface EnhancedSearchBarProps extends SearchBarProps {
+  error?: string | null;
+  onClear?: () => void;
+}
+
+const SearchBar: React.FC<EnhancedSearchBarProps> = ({ 
   onSearch, 
   loading = false, 
-  placeholder = "Search your documents..." 
-}) => {
-  const [query, setQuery] = useState('');
+  placeholder = "Search your documents...",
+  error = null,
+  onClear
+}) => {  const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const debounceTimeoutRef = useRef<number | undefined>(undefined);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Debounce the search query
+  // Enhanced debouncing with cleanup
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(query);
-    }, 500); // 500ms delay
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
 
-    return () => clearTimeout(timer);
+    debounceTimeoutRef.current = window.setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 300);
+
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
   }, [query]);
 
-  // Trigger search when debounced query changes and is not empty
+  // Trigger search when debounced query changes
   useEffect(() => {
     if (debouncedQuery.trim() && debouncedQuery.length >= 2) {
       onSearch(debouncedQuery.trim());
@@ -36,58 +52,70 @@ const SearchBar: React.FC<SearchBarProps> = ({
   const handleClear = useCallback(() => {
     setQuery('');
     setDebouncedQuery('');
-  }, []);
+    onClear?.();
+    inputRef.current?.focus();
+  }, [onClear]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       handleClear();
     }
-  }, [handleClear]);
-  return (
-    <form onSubmit={handleSubmit} className="search-bar">
-      <div className="search-input-container">
-        <Search className="search-icon" size={20} />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          className="search-input"
-          disabled={loading}
-          autoComplete="off"
-          spellCheck="false"
-        />
-        {query && (
-          <button
-            type="button"
-            onClick={handleClear}
-            className="clear-button"
-            title="Clear search"
-          >
-            <X size={16} />
-          </button>
-        )}
-        <button
-          type="submit"
-          disabled={!query.trim() || loading}
-          className="search-button"
-          title="Search documents"
-        >
-          {loading ? (
-            <Loader2 className="loading-spinner" size={20} />
-          ) : (
-            'Search'
+  }, [handleClear]);  return (
+    <div className="search-bar">
+      <form onSubmit={handleSubmit} className="search-form">
+        <div className={`search-input-container ${error ? 'error' : ''}`}>
+          <Search className="search-icon" size={20} />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            className="search-input"
+            disabled={loading}
+            autoComplete="off"
+            spellCheck="false"
+            aria-label="Search documents"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="clear-button"
+              title="Clear search"
+              aria-label="Clear search"
+            >
+              <X size={16} />
+            </button>
           )}
-        </button>
-      </div>
-      
-      {debouncedQuery && debouncedQuery !== query && (
-        <div className="search-hint">
-          <span>Searching as you type...</span>
+          <button
+            type="submit"
+            disabled={!query.trim() || loading}
+            className="search-button"
+            title="Search documents"
+            aria-label="Search"
+          >
+            {loading ? (
+              <Loader2 className="loading-spinner" size={20} />
+            ) : (
+              'Search'
+            )}
+          </button>
         </div>
-      )}
-      
+        
+        {error && (
+          <div className="error-message" role="alert">
+            {error}
+          </div>
+        )}
+        
+        {debouncedQuery && debouncedQuery !== query && !error && (
+          <div className="search-hint">
+            <span>Searching as you type...</span>
+          </div>        )}
+      </form>
+
       <style jsx>{`
         .search-bar {
           width: 100%;
@@ -150,7 +178,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
         .search-button:hover:not(:disabled) {
           background: #4338ca;
         }
-          .search-button:disabled {
+        
+        .search-button:disabled {
           background: #374151;
           cursor: not-allowed;
         }
@@ -174,6 +203,17 @@ const SearchBar: React.FC<SearchBarProps> = ({
           background: #374151;
         }
         
+        .error-message {
+          margin-top: 8px;
+          text-align: center;
+          color: #ef4444;
+          font-size: 14px;
+          background: rgba(239, 68, 68, 0.1);
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          border-radius: 6px;
+          padding: 8px 12px;
+        }
+        
         .search-hint {
           margin-top: 8px;
           text-align: center;
@@ -191,7 +231,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
           to { transform: rotate(360deg); }
         }
       `}</style>
-    </form>
+    </div>
   );
 };
 

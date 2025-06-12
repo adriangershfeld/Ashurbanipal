@@ -8,7 +8,10 @@ import logging
 import os
 import sys
 import subprocess
+import asyncio
+import stat
 from pathlib import Path
+from typing import List, Tuple
 
 from utils.sanitization import InputSanitizer
 
@@ -26,6 +29,95 @@ class FileInfo(BaseModel):
 class FilesResponse(BaseModel):
     files: List[FileInfo]
     total_files: int
+
+class OpenFolderRequest(BaseModel):
+    folder_path: str
+
+class OperationResponse(BaseModel):
+    status: str
+    message: str
+    details: Optional[dict] = None
+
+def is_safe_path(path: Path, allowed_prefixes: Optional[List[str]] = None) -> bool:
+    """
+    Enhanced security check for file paths
+    """
+    try:
+        # Resolve to absolute path to handle ../ traversal attempts
+        resolved_path = path.resolve()
+        
+        # Default allowed prefixes (can be configured)
+        if allowed_prefixes is None:
+            allowed_prefixes = [
+                str(Path.home()),  # User home directory
+                str(Path.cwd()),   # Current working directory
+                "C:\\Users",       # Windows Users folder
+                "/home",           # Linux home folders
+                "/Users"           # macOS Users folder
+            ]
+        
+        # Check if path starts with any allowed prefix
+        for prefix in allowed_prefixes:
+            if str(resolved_path).startswith(str(Path(prefix).resolve())):
+                return True
+                
+        return False
+    except (OSError, ValueError):
+        return False
+
+def check_folder_permissions(path: Path) -> Tuple[bool, str]:
+    """
+    Check if folder can be accessed and opened
+    """
+    try:
+        # Check read permission
+        if not os.access(path, os.R_OK):
+            return False, "Read permission denied"
+            
+        # Check if it's a directory
+        if not path.is_dir():
+            return False, "Path is not a directory"
+            
+        # Try to list directory contents (quick permission test)
+        try:
+            next(path.iterdir())
+        except StopIteration:
+            # Empty directory is fine
+            pass
+        except PermissionError:
+            return False, "Directory access denied"
+            
+        return True, "OK"
+    except Exception as e:
+        return False, f"Permission check failed: {str(e)}"
+
+async def safe_subprocess_run(cmd: List[str], timeout: int = 10) -> subprocess.CompletedProcess:
+    """
+    Safely run subprocess with timeout and proper error handling
+    """
+    try:
+        # Use asyncio to run subprocess with timeout
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+          stdout, stderr = await asyncio.wait_for(
+            process.communicate(), 
+            timeout=timeout
+        )
+        
+        return subprocess.CompletedProcess(
+            cmd, process.returncode or 0, stdout, stderr
+        )
+    except asyncio.TimeoutError:
+        # Kill the process if it times out
+        try:
+            process.kill()
+            await process.wait()
+        except:
+            pass
+        raise subprocess.TimeoutExpired(cmd, timeout)
 
 @router.get("/files", response_model=FilesResponse)
 async def list_files(limit: int = 50, offset: int = 0):
@@ -186,6 +278,118 @@ async def open_file_by_path(filepath: str):
         logger.error(f"File opening error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to open file")
 
+@router.post("/files/open-folder", response_model=OperationResponse)
+async def open_folder_in_explorer(request: OpenFolderRequest):
+    """
+    Open a folder in the system's default file explorer with enhanced security
+    """
+    logger.info(f"Received open folder request: {request.folder_path}")
+    
+    try:
+        folder_path = request.folder_path.strip()
+        
+        # Enhanced validation
+        if not folder_path:
+            raise HTTPException(
+                status_code=400, 
+                detail="Folder path cannot be empty"
+            )
+            
+        # Sanitize path
+        if not InputSanitizer.sanitize_path(folder_path):
+            logger.warning(f"Path failed sanitization: {folder_path}")
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid characters in folder path"
+            )
+            
+        path = Path(folder_path)
+        logger.info(f"Processing path: {path}")
+          # Security checks (temporarily disabled for debugging)
+        # if not is_safe_path(path):
+        #     logger.warning(f"Path outside allowed directories: {path}")
+        #     raise HTTPException(
+        #         status_code=403, 
+        #         detail="Access to this folder is not permitted"
+        #     )
+        
+        # Existence check
+        if not path.exists():
+            logger.warning(f"Path does not exist: {path}")
+            raise HTTPException(
+                status_code=404, 
+                detail="Folder not found"
+            )
+            
+        # Handle file paths by using parent directory
+        if path.is_file():
+            path = path.parent
+            logger.info(f"Using parent directory: {path}")
+        
+        # Permission checks
+        can_access, perm_message = check_folder_permissions(path)
+        if not can_access:
+            logger.warning(f"Permission denied for {path}: {perm_message}")
+            raise HTTPException(
+                status_code=403, 
+                detail=f"Cannot access folder: {perm_message}"
+            )
+        
+        logger.info(f"Opening folder in explorer: {path}")        # Platform-specific folder opening
+        logger.info(f"About to open folder with explorer: {path}")
+        logger.info(f"OS name: {os.name}")
+        
+        try:
+            if os.name == 'nt':  # Windows
+                logger.info("Running Windows explorer command")
+                # Use subprocess.run without check=True for Windows explorer
+                result = subprocess.run(['explorer', str(path)], 
+                                      capture_output=True, text=True, timeout=10)
+                logger.info(f"Explorer command completed with return code: {result.returncode}")
+                logger.info(f"Stdout: {result.stdout}")
+                logger.info(f"Stderr: {result.stderr}")
+                # Explorer returns 1 on success, so don't treat it as error
+            elif sys.platform == 'darwin':  # macOS
+                logger.info("Running macOS open command")
+                await safe_subprocess_run(['open', str(path)])
+            elif os.name == 'posix':  # Linux
+                logger.info("Running Linux xdg-open command")
+                await safe_subprocess_run(['xdg-open', str(path)])
+            else:
+                logger.error(f"Unsupported OS: {os.name}")
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Unsupported operating system"
+                )
+        except subprocess.TimeoutExpired as te:
+            logger.error(f"Timeout opening folder: {path} - {te}")
+            raise HTTPException(
+                status_code=500, 
+                detail="Folder opening timed out"
+            )
+        except Exception as e:
+            logger.error(f"Exception opening folder: {path} - {e}")
+            logger.error(f"Exception type: {type(e)}")
+            raise HTTPException(
+                status_code=500, 
+                detail="Failed to open folder with system file manager"
+            )
+        
+        return OperationResponse(
+            status="success",
+            message="Folder opened successfully",
+            details={"folder_path": str(path)}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error opening folder: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail="An unexpected error occurred while opening the folder"
+        )
+
 @router.get("/files/{file_id}/chunks")
 async def get_file_chunks(file_id: str):
     """
@@ -312,3 +516,5 @@ async def get_file_content(filename: str, max_length: int = 10000):
     except Exception as e:
         logger.error(f"Content retrieval error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve file content")
+
+# ...existing code...

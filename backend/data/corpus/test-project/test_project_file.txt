@@ -1,0 +1,15 @@
+This is a test document for project management functionality.
+
+This file will be used to test:
+1. File upload to the main research corpus
+2. Project assignment functionality  
+3. File organization across projects
+4. Search functionality within projects
+
+The Ptaḥ research assistant should be able to:
+- Index this content for semantic search
+- Allow assignment to specific research projects
+- Maintain the file in the main corpus while organizing it by projects
+- Provide contextual search results based on project scope
+
+This demonstrates the hybrid corpus + project organization model.

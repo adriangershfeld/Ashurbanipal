@@ -27,6 +27,7 @@ from api.ingest import router as ingest_router
 from api.files import router as files_router
 from api.analytics import router as analytics_router
 from api.browser import router as browser_router
+from api.projects import router as projects_router
 
 app = FastAPI(
     title="Local AI Research Assistant",
@@ -52,38 +53,39 @@ if os.getenv("ENVIRONMENT") != "production":
         max_body_size=1024
     )
 
-# Configure CORS based on environment
+
 allowed_origins = [
     "http://localhost:5173",  # Vite dev server
     "http://localhost:3000",  # Alternative dev port
 ]
 
-# In production, you might want to be more restrictive
+
 if os.getenv("ENVIRONMENT") == "production":
-    allowed_origins = ["http://localhost:5173"]  # Only allow specific origins
+    allowed_origins = ["http://localhost:5173"] 
 
 # CORS middleware for frontend communication
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],  # Specific methods only
-    allow_headers=["Content-Type", "Authorization"],  # Specific headers only
+    allow_methods=["GET", "POST", "PUT", "DELETE"], 
+    allow_headers=["Content-Type", "Authorization"],  
 )
 
-# Include API routers with proper error handling
+
 try:
     app.include_router(query_router, prefix="/api", tags=["query"])
     app.include_router(ingest_router, prefix="/api", tags=["ingest"])
     app.include_router(files_router, prefix="/api", tags=["files"])
     app.include_router(analytics_router, prefix="/api", tags=["analytics"])
     app.include_router(browser_router, prefix="/api", tags=["browser"])
+    app.include_router(projects_router, prefix="/api", tags=["projects"])
     logger.info("API routers configured successfully")
 except Exception as e:
     logger.error(f"Failed to configure API routers: {str(e)}")
     raise
 
-# Serve static files from frontend build
+
 frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
 if frontend_dist.exists():
     app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")

@@ -8,7 +8,8 @@ import {
   Eye, 
   Plus,
   Search,
-  Filter
+  Filter,
+  FolderOpen
 } from 'lucide-react';
 import type { FileInfo, FileViewerProps } from '../types';
 
@@ -169,9 +170,12 @@ interface FileUploadProps {
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({ onUpload, onFolderIngest, uploading, onClose }) => {
-  const [dragActive, setDragActive] = useState(false);  const [uploadMode, setUploadMode] = useState<'files' | 'folder'>('files');
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'files' | 'folder'>('files');
   const [folderPath, setFolderPath] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -197,9 +201,34 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUpload, onFolderIngest
     }
   };
 
+  const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setSelectedFiles(e.target.files);
+      // Get the folder path from the first file
+      const firstFile = e.target.files[0];
+      if (firstFile.webkitRelativePath) {
+        const folderName = firstFile.webkitRelativePath.split('/')[0];
+        setFolderPath(folderName);
+      }
+    }
+  };
   const handleFolderPathSubmit = () => {
-    if (folderPath.trim()) {
-      onFolderIngest(folderPath.trim());
+    if (selectedFiles && selectedFiles.length > 0) {
+      // Use the selected files for processing
+      const folderName = selectedFiles[0].webkitRelativePath?.split('/')[0] || 'Selected Folder';
+      onFolderIngest(folderName);
+    }
+  };
+
+  const handleBrowseFolder = () => {
+    folderInputRef.current?.click();
+  };
+
+  const clearFolderSelection = () => {
+    setSelectedFiles(null);
+    setFolderPath('');
+    if (folderInputRef.current) {
+      folderInputRef.current.value = '';
     }
   };
 
@@ -253,29 +282,77 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUpload, onFolderIngest
                 style={{ display: 'none' }}
                 disabled={uploading}
               />
-            </div>
-          ) : (
+            </div>          ) : (
             <div className="folder-upload-area">
-              <div className="folder-path-input">
-                <label htmlFor="folderPath">Folder Path:</label>
+              {/* Native Folder Selection */}
+              <div className="folder-selection-section">
+                <h4>Select Folder</h4>
+                {selectedFiles && selectedFiles.length > 0 ? (
+                  <div className="folder-selected">
+                    <div className="folder-info-selected">
+                      <div className="folder-name">
+                        📁 {folderPath || 'Selected Folder'}
+                      </div>
+                      <div className="folder-stats">
+                        {selectedFiles.length} files selected
+                      </div>
+                    </div>
+                    <div className="folder-actions">                      <button 
+                        className="change-folder-btn"
+                        onClick={handleBrowseFolder}
+                        disabled={uploading}
+                      >
+                        Change
+                      </button>
+                      <button 
+                        className="clear-folder-btn"
+                        onClick={clearFolderSelection}
+                        disabled={uploading}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="folder-picker">                    <button 
+                      className="browse-folder-btn"
+                      onClick={handleBrowseFolder}
+                      disabled={uploading}
+                    >
+                      <Upload size={20} />
+                      Select Folder
+                    </button>
+                    <p className="browse-hint">
+                      Choose a folder to process all documents within it
+                    </p>
+                  </div>
+                )}
+                  {/* Hidden folder input */}
                 <input
-                  type="text"
-                  id="folderPath"
-                  value={folderPath}
-                  onChange={(e) => setFolderPath(e.target.value)}
-                  placeholder="C:\Users\Your\Documents\Folder"
+                  ref={folderInputRef}
+                  type="file"
+                  {...({ webkitdirectory: '' } as any)}
+                  multiple
+                  onChange={handleFolderSelect}
+                  style={{ display: 'none' }}
                   disabled={uploading}
-                />
+                />              </div>
+
+              {/* Process Button */}
+              <div className="process-section">
                 <button 
                   className="ingest-button"
                   onClick={handleFolderPathSubmit}
-                  disabled={uploading || !folderPath.trim()}
-                >                  {uploading ? 'Processing...' : 'Ingest Folder'}
+                  disabled={uploading || !selectedFiles || selectedFiles.length === 0}
+                >
+                  {uploading ? 'Processing...' : 'Process Folder'}
                 </button>
               </div>
+
+              {/* Information */}
               <div className="folder-info">
-                <p><strong>Note:</strong> This will scan the specified folder for documents and add them to your corpus.</p>
-                <p>Supported formats: PDF, DOCX, TXT, MD files</p>                <p>Python files and other source code will be automatically excluded.</p>
+                <p><strong>Note:</strong> This will scan the selected folder for documents and add them to your corpus.</p>
+                <p>Supported formats: PDF, DOCX, TXT, MD files</p>
               </div>
             </div>
           )}
@@ -869,6 +946,462 @@ const FileCard: React.FC<FileCardProps> = ({ file, onSelect, onDelete }) => {
 
         .stat strong {
           color: #4f46e5;
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// Compact File Browser for Browser Tab
+interface FileBrowserProps {
+  files: FileInfo[];
+  onFileSelect: (file: FileInfo) => void;
+  onFileDelete: (filename: string) => void;
+  searchTerm: string;
+  onSearchChange: (term: string) => void;
+}
+
+export const FileBrowser: React.FC<FileBrowserProps> = ({
+  files,
+  onFileSelect,
+  onFileDelete,
+  searchTerm,
+  onSearchChange
+}) => {
+  const filteredFiles = files.filter(file =>
+    file.filename.toLowerCase().includes(searchTerm.toLowerCase())
+  );  const handleOpenInExplorer = async (filepath: string) => {
+    try {
+      // Import the API function
+      const { filesApi } = await import('../api');
+      await filesApi.openFolder(filepath);
+      console.log('Folder opened successfully');
+    } catch (error: any) {
+      console.error('Failed to open in explorer:', error);
+      
+      // Show user-friendly error message
+      const errorMessage = error.message || 'Failed to open folder in file explorer';
+      alert(`Error: ${errorMessage}`);
+    }
+  };
+
+  const formatFileSize = (bytes: number | undefined) => {
+    if (!bytes) return 'Unknown';
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${Math.round(kb)} KB`;
+    const mb = kb / 1024;
+    return `${mb.toFixed(1)} MB`;
+  };
+
+  return (
+    <div className="file-browser-content">
+      <div className="browser-search">
+        <Search size={16} />
+        <input
+          type="text"
+          placeholder="Search files..."
+          value={searchTerm}
+          onChange={(e) => onSearchChange(e.target.value)}
+        />
+      </div>
+
+      <div className="files-list-compact">
+        {filteredFiles.length === 0 ? (
+          <div className="no-files-compact">
+            <File size={24} />
+            <p>
+              {searchTerm ? 'No files match your search' : 'No files uploaded yet'}
+            </p>
+          </div>
+        ) : (
+          filteredFiles.map((file) => (
+            <div 
+              key={file.filename} 
+              className="file-item-compact"
+              onClick={() => onFileSelect(file)}
+            >
+              <div className="file-icon">
+                <FileText size={16} />
+              </div>
+              <div className="file-details">
+                <div className="file-name-compact">{file.filename}</div>
+                <div className="file-meta">
+                  <span>{file.chunks_count || 0} chunks</span>
+                  <span>•</span>
+                  <span>{formatFileSize(file.size)}</span>
+                </div>
+              </div>              <div className="file-actions-compact">
+                <button 
+                  className="action-btn-compact explorer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenInExplorer(file.filepath);
+                  }}
+                  title="Open in file explorer"
+                >
+                  <FolderOpen size={12} />
+                </button>
+                <button 
+                  className="action-btn-compact delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFileDelete(file.filename);
+                  }}
+                  title="Delete file"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <style jsx>{`
+        .file-browser-content {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          overflow: hidden;
+        }
+
+        .browser-search {
+          position: relative;
+          display: flex;
+          align-items: center;
+          margin: 16px 20px;
+        }
+
+        .browser-search svg {
+          position: absolute;
+          left: 12px;
+          color: #64748b;
+          z-index: 1;
+        }
+
+        .browser-search input {
+          width: 100%;
+          background: #0f0f23;
+          border: 1px solid #374151;
+          border-radius: 6px;
+          padding: 8px 12px 8px 36px;
+          color: #e2e8f0;
+          font-size: 13px;
+        }
+
+        .browser-search input:focus {
+          outline: none;
+          border-color: #4f46e5;
+        }
+
+        .browser-search input::placeholder {
+          color: #64748b;
+        }
+
+        .files-list-compact {
+          flex: 1;
+          overflow-y: auto;
+          padding: 0 20px 20px;
+        }
+
+        .no-files-compact {
+          text-align: center;
+          padding: 40px 20px;
+          color: #64748b;
+        }
+
+        .no-files-compact svg {
+          margin-bottom: 12px;
+          opacity: 0.5;
+        }
+
+        .no-files-compact p {
+          margin: 0;
+          font-size: 13px;
+          line-height: 1.4;
+        }
+
+        .file-item-compact {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          border: 1px solid transparent;
+        }
+
+        .file-item-compact:hover {
+          background: rgba(79, 70, 229, 0.1);
+          border-color: #4f46e5;
+        }
+
+        .file-icon {
+          flex-shrink: 0;
+          color: #4f46e5;
+        }
+
+        .file-details {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .file-name-compact {
+          color: #d1d5db;
+          font-size: 13px;
+          font-weight: 500;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          margin-bottom: 2px;
+        }
+
+        .file-meta {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          color: #6b7280;
+          font-size: 11px;
+        }
+
+        .file-actions-compact {
+          flex-shrink: 0;
+          opacity: 0;
+          transition: opacity 0.2s ease;
+        }
+
+        .file-item-compact:hover .file-actions-compact {
+          opacity: 1;
+        }        .action-btn-compact {
+          background: none;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 3px;
+          transition: all 0.2s ease;
+          margin-left: 4px;
+        }
+
+        .action-btn-compact:hover {
+          color: #cbd5e1;
+          background: #374151;
+        }
+
+        .action-btn-compact.explorer:hover {
+          color: #3b82f6;
+        }
+
+        .action-btn-compact.delete:hover {
+          color: #ef4444;
+        }
+
+        /* Scrollbar styling */
+        .files-list-compact::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .files-list-compact::-webkit-scrollbar-track {
+          background: #1a1a2e;
+        }
+
+        .files-list-compact::-webkit-scrollbar-thumb {
+          background: #374151;
+          border-radius: 3px;
+        }
+
+        .files-list-compact::-webkit-scrollbar-thumb:hover {
+          background: #4b5563;
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// Enhanced File Content Viewer for Browser Tab
+interface FileContentViewerProps {
+  file: FileInfo;
+  content: string;
+  onLineClick?: (lineNumber: number) => void;
+  highlightLine?: number;
+}
+
+export const FileContentViewer: React.FC<FileContentViewerProps> = ({
+  file,
+  content,
+  onLineClick,
+  highlightLine
+}) => {
+  const lines = content.split('\n');
+  
+  return (
+    <div className="file-content-viewer">
+      <div className="content-header">
+        <div className="file-info-minimal">
+          <FileText size={16} />
+          <span className="filename">{file.filename}</span>
+        </div>
+        <div className="content-stats">
+          <span>{lines.length} lines</span>
+          <span>•</span>
+          <span>{file.chunks_count || 0} chunks</span>
+        </div>
+      </div>
+      
+      <div className="content-body">
+        <div className="line-numbers">
+          {lines.map((_, index) => (
+            <div 
+              key={index}
+              className={`line-number ${highlightLine === index + 1 ? 'highlighted' : ''}`}
+              onClick={() => onLineClick?.(index + 1)}
+            >
+              {index + 1}
+            </div>
+          ))}
+        </div>
+        <div className="content-lines">
+          {lines.map((line, index) => (
+            <div 
+              key={index}
+              className={`content-line ${highlightLine === index + 1 ? 'highlighted' : ''}`}
+              onClick={() => onLineClick?.(index + 1)}
+            >
+              {line || ' '}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <style jsx>{`
+        .file-content-viewer {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          background: #0f0f23;
+          border-left: 1px solid #374151;
+        }
+
+        .content-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          border-bottom: 1px solid #374151;
+          background: #1a1a2e;
+        }
+
+        .file-info-minimal {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #d1d5db;
+        }
+
+        .file-info-minimal svg {
+          color: #4f46e5;
+        }
+
+        .filename {
+          font-size: 13px;
+          font-weight: 500;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 200px;
+        }
+
+        .content-stats {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          color: #6b7280;
+          font-size: 11px;
+        }
+
+        .content-body {
+          display: flex;
+          flex: 1;
+          overflow: hidden;
+        }
+
+        .line-numbers {
+          background: #1a1a2e;
+          border-right: 1px solid #374151;
+          padding: 8px 0;
+          user-select: none;
+          min-width: 50px;
+          max-width: 60px;
+          overflow: hidden;
+        }
+
+        .line-number {
+          padding: 0 8px;
+          text-align: right;
+          font-family: 'Fira Code', monospace;
+          font-size: 12px;
+          line-height: 1.4;
+          color: #6b7280;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .line-number:hover {
+          background: rgba(79, 70, 229, 0.1);
+          color: #9ca3af;
+        }
+
+        .line-number.highlighted {
+          background: rgba(79, 70, 229, 0.2);
+          color: #4f46e5;
+          font-weight: 600;
+        }
+
+        .content-lines {
+          flex: 1;
+          overflow: auto;
+          padding: 8px 0;
+          font-family: 'Fira Code', monospace;
+          font-size: 12px;
+          line-height: 1.4;
+        }
+
+        .content-line {
+          padding: 0 12px;
+          color: #d1d5db;
+          white-space: pre;
+          cursor: pointer;
+          transition: background 0.2s ease;
+        }
+
+        .content-line:hover {
+          background: rgba(79, 70, 229, 0.05);
+        }
+
+        .content-line.highlighted {
+          background: rgba(79, 70, 229, 0.15);
+          border-left: 2px solid #4f46e5;
+          padding-left: 10px;
+        }
+
+        /* Scrollbar styling */
+        .content-lines::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+
+        .content-lines::-webkit-scrollbar-track {
+          background: #1a1a2e;
+        }
+
+        .content-lines::-webkit-scrollbar-thumb {
+          background: #374151;
+          border-radius: 3px;
+        }
+
+        .content-lines::-webkit-scrollbar-thumb:hover {
+          background: #4b5563;
         }
       `}</style>
     </div>
