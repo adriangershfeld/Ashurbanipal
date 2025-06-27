@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
